@@ -179,23 +179,27 @@ ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.booking_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
--- Políticas para usuarios autenticados (tu mamá, hermana y tú)
-CREATE POLICY "Permitir todo a usuarios autenticados en inventario" 
-    ON public.inventory_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+-- Políticas para usuarios autenticados y anónimos (soporta PWA y anon key de Supabase)
+CREATE POLICY "Permitir acceso a inventario" 
+    ON public.inventory_items FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Permitir todo a usuarios autenticados en clientes" 
-    ON public.clients FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir acceso a clientes" 
+    ON public.clients FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Permitir todo a usuarios autenticados en reservas" 
-    ON public.bookings FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir acceso a reservas" 
+    ON public.bookings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Permitir todo a usuarios autenticados en items de reserva" 
-    ON public.booking_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir acceso a items de reserva" 
+    ON public.booking_items FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Permitir todo a usuarios autenticados en pagos" 
-    ON public.payments FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir acceso a pagos" 
+    ON public.payments FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- Permisos de ejecución para la función de disponibilidad anti-sobreventa
+GRANT EXECUTE ON FUNCTION public.check_item_availability(UUID, TIMESTAMPTZ, TIMESTAMPTZ) TO anon, authenticated;
 
 -- Habilitar tiempo real (Realtime) para las tablas clave
 ALTER PUBLICATION supabase_realtime ADD TABLE public.inventory_items;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.bookings;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.booking_items;
+

@@ -1,0 +1,88 @@
+import type { InventoryItem } from "@/core/domain/inventory";
+
+export const INITIAL_INVENTORY_SEED: InventoryItem[] = [
+  {
+    id: "item-1",
+    sku: "SILL-TIF-BCA",
+    name: "Silla Tiffany Blanca",
+    category: "sillas",
+    description: "Silla clásica para bodas y recepciones de gala.",
+    total_stock: 350,
+    rental_price: 25.0,
+    replacement_price: 250.0,
+    image_url:
+      "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=300&q=80",
+    buffer_cleanup_hours: 2,
+    is_active: true,
+  },
+  {
+    id: "item-2",
+    sku: "SILL-PLE-ACO",
+    name: "Silla Plegable Acojinada",
+    category: "sillas",
+    description: "Silla cómoda para eventos masivos y familiares.",
+    total_stock: 200,
+    rental_price: 15.0,
+    replacement_price: 180.0,
+    image_url:
+      "https://images.unsplash.com/photo-1503602642458-232111445657?auto=format&fit=crop&w=300&q=80",
+    buffer_cleanup_hours: 1,
+    is_active: true,
+  },
+  {
+    id: "item-3",
+    sku: "MESA-RED-10P",
+    name: "Mesa Redonda (10 personas)",
+    category: "mesas",
+    description: "Mesa de 1.50m de diámetro de fibra de vidrio.",
+    total_stock: 35,
+    rental_price: 120.0,
+    replacement_price: 1100.0,
+    image_url:
+      "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&w=300&q=80",
+    buffer_cleanup_hours: 2,
+    is_active: true,
+  },
+  {
+    id: "item-4",
+    sku: "MESA-TAB-REC",
+    name: "Mesa Tablón Rectangular",
+    category: "mesas",
+    description: "Tablón de 2.40m para banquetes y mesas de postres.",
+    total_stock: 25,
+    rental_price: 100.0,
+    replacement_price: 950.0,
+    image_url:
+      "https://images.unsplash.com/photo-1577140917170-285929fb55b7?auto=format&fit=crop&w=300&q=80",
+    buffer_cleanup_hours: 2,
+    is_active: true,
+  },
+  {
+    id: "item-5",
+    sku: "MANT-RED-BCO",
+    name: "Mantel Redondo Blanco",
+    category: "manteleria",
+    description: "Tela tergal de uso rudo para mesa redonda de 10 personas.",
+    total_stock: 60,
+    rental_price: 40.0,
+    replacement_price: 220.0,
+    image_url:
+      "https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=300&q=80",
+    buffer_cleanup_hours: 6,
+    is_active: true,
+  },
+  {
+    id: "item-6",
+    sku: "DECO-JAR-CRI",
+    name: "Jarrón de Cristal Alto (Centro)",
+    category: "decoracion",
+    description: "Centro de mesa transparente de cristal soplado.",
+    total_stock: 15,
+    rental_price: 80.0,
+    replacement_price: 320.0,
+    image_url:
+      "https://images.unsplash.com/photo-1581783342308-f792dbdd27c5?auto=format&fit=crop&w=300&q=80",
+    buffer_cleanup_hours: 2,
+    is_active: true,
+  },
+];
