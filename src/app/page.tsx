@@ -3,10 +3,12 @@
 import { CheckCircle2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { QuoteWizard } from "@/components/bookings/QuoteWizard";
+import { ClientList } from "@/components/clients/ClientList";
 import { InventoryGrid } from "@/components/inventory/InventoryGrid";
 import { LogisticsTimeline } from "@/components/logistics/LogisticsTimeline";
 import { BottomNav, type NavTab } from "@/components/shared/BottomNav";
 import { Header } from "@/components/shared/Header";
+import type { ClientAddress, ClientWithStats } from "@/core/domain/client";
 import type { InventoryItem } from "@/core/domain/inventory";
 import type { UserRole } from "@/core/domain/user";
 import { INITIAL_INVENTORY_SEED } from "@/core/use-cases/inventory";
@@ -22,6 +24,10 @@ export default function Home() {
   const [tab, setTab] = useState<NavTab>("inventory");
   const [items, setItems] = useState<InventoryItem[]>(INITIAL_INVENTORY_SEED);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Cliente preseleccionado para cotizar
+  const [quoteClient, setQuoteClient] = useState<ClientWithStats | null>(null);
+  const [quoteAddress, setQuoteAddress] = useState<ClientAddress | null>(null);
 
   const showNotification = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -63,8 +69,20 @@ export default function Home() {
 
     showNotification(`Stock de ${currentItem.name}: ${newStock}`);
 
-    // Persistir en Supabase si está configurado
+    // Persistir en Supabase
     await updateItemStockInDb(id, newStock);
+  };
+
+  const handleStartQuoteFromClient = (
+    client: ClientWithStats,
+    address?: ClientAddress,
+  ) => {
+    setQuoteClient(client);
+    setQuoteAddress(address || client.addresses[0] || null);
+    setTab("quote");
+    showNotification(
+      `Iniciando cotización para ${client.full_name.split(" ")[0]}`,
+    );
   };
 
   return (
@@ -109,7 +127,20 @@ export default function Home() {
             />
           )}
 
-          {tab === "quote" && <QuoteWizard inventory={items} />}
+          {tab === "clients" && (
+            <ClientList
+              onStartQuoteWithClient={handleStartQuoteFromClient}
+              onNotification={showNotification}
+            />
+          )}
+
+          {tab === "quote" && (
+            <QuoteWizard
+              inventory={items}
+              initialClient={quoteClient}
+              initialAddress={quoteAddress}
+            />
+          )}
 
           {tab === "logistics" && (
             <LogisticsTimeline role={role} onNotification={showNotification} />
@@ -163,14 +194,15 @@ export default function Home() {
           )}
         </main>
 
-        <BottomNav activeTab={tab} onTabChange={setTab} role={role} />
-
+        {/* Notificación Toast Flotante */}
         {toastMessage && (
-          <div className="fixed top-14 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/90 px-4 py-2 font-semibold text-white text-xs shadow-lg backdrop-blur-xs">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-            <span>{toastMessage}</span>
+          <div className="absolute top-16 right-4 left-4 z-50 flex items-center gap-2 rounded-2xl bg-slate-900/95 px-4 py-3 text-white shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-200">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            <p className="font-medium text-xs">{toastMessage}</p>
           </div>
         )}
+
+        <BottomNav activeTab={tab} onTabChange={setTab} role={role} />
       </div>
     </div>
   );
