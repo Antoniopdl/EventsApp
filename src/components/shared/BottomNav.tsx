@@ -14,18 +14,20 @@ export function BottomNav({ activeTab, onTabChange, role }: BottomNavProps) {
 
   return (
     <nav className="fixed right-0 bottom-0 left-0 z-40 flex items-center justify-around border-t border-slate-200 bg-white/95 px-2 py-2 backdrop-blur-md">
-      <button
-        type="button"
-        onClick={() => onTabChange("inventory")}
-        className={`flex flex-col items-center gap-1 text-[10px] transition-colors ${
-          activeTab === "inventory"
-            ? "font-bold text-blue-600"
-            : "text-slate-400 hover:text-slate-600"
-        }`}
-      >
-        <Package className="h-5 w-5" />
-        <span>Inventario</span>
-      </button>
+      {isAdmin && (
+        <button
+          type="button"
+          onClick={() => onTabChange("inventory")}
+          className={`flex flex-col items-center gap-1 text-[10px] transition-colors ${
+            activeTab === "inventory"
+              ? "font-bold text-blue-600"
+              : "text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          <Package className="h-5 w-5" />
+          <span>Inventario</span>
+        </button>
+      )}
 
       {isAdmin && (
         <button

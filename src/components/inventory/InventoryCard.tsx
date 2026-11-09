@@ -139,7 +139,7 @@ export function InventoryCard({
           <h3 className="line-clamp-2 font-bold text-slate-900 text-xs leading-tight mt-0.5">
             {item.name}
           </h3>
-          {item.description && (
+          {isPackage && item.description && (
             <p className="text-[10px] text-slate-500 line-clamp-2 mt-0.5">
               {item.description}
             </p>

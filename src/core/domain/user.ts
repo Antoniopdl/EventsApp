@@ -10,6 +10,17 @@ export interface UserProfile {
   updated_at?: string;
 }
 
+export interface AppUser {
+  id: string;
+  username: string;
+  pin_code: string;
+  role: UserRole;
+  full_name: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface BusinessConfig {
   name: string;
   phone: string;

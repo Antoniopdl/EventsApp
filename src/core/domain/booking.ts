@@ -44,8 +44,14 @@ export interface Booking {
   subtotal_furniture: number;
   discount_amount: number;
   security_deposit: number;
+  advance_payment: number;
+  balance_due: number;
   total_amount: number;
   payment_status: PaymentStatus;
+  client_name?: string;
+  client_phone?: string;
+  address_alias?: string;
+  address_id?: string;
   notes?: string | null;
   created_at?: string;
   updated_at?: string;

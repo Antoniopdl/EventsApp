@@ -1,7 +1,15 @@
 "use client";
 
-import { Check, Clipboard, MapPin, Navigation, X } from "lucide-react";
-import { useState } from "react";
+import {
+  Check,
+  Clipboard,
+  Loader2,
+  MapPin,
+  Navigation,
+  Search,
+  X,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { FER_EVENTOS_CONFIG } from "@/core/domain/user";
 import {
   calculateDistanceToBodega,
@@ -54,8 +62,81 @@ export function AddressPickerMap({
   const [showPasteBox, setShowPasteBox] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // Búsqueda interactiva de direcciones
+  const [searchQuery, setSearchQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<
+    {
+      place_id?: number | string;
+      display_name: string;
+      lat: string;
+      lon: string;
+    }[]
+  >([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const distanceKm = calculateDistanceToBodega(lat, lng);
   const freightCost = calculateSuggestedFreight(distanceKm);
+
+  // Escuchar mensajes del mapa interactivo (cuando el usuario arrastra el pin)
+  useEffect(() => {
+    const handleMapMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === "PIN_MOVED") {
+        const newLat = Number(event.data.lat);
+        const newLng = Number(event.data.lng);
+        if (!Number.isNaN(newLat) && !Number.isNaN(newLng)) {
+          setLat(newLat);
+          setLng(newLng);
+        }
+      }
+    };
+    window.addEventListener("message", handleMapMessage);
+    return () => window.removeEventListener("message", handleMapMessage);
+  }, []);
+
+  // Búsqueda predictiva con autocompletado
+  const handleSearchChange = (text: string) => {
+    setSearchQuery(text);
+    setErrorMsg("");
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+    if (text.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    setIsSearching(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const q = `${text.trim()}, Sinaloa, Mexico`;
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+            q,
+          )}&limit=5&countrycodes=mx`,
+        );
+        const data = await res.json();
+        setSuggestions(data || []);
+      } catch (err) {
+        console.error("Error buscando dirección:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 400);
+  };
+
+  const handleSelectSuggestion = (s: {
+    display_name: string;
+    lat: string;
+    lon: string;
+  }) => {
+    const newLat = Number.parseFloat(s.lat);
+    const newLng = Number.parseFloat(s.lon);
+    setLat(newLat);
+    setLng(newLng);
+    setAddressText(s.display_name.split(",")[0] || s.display_name);
+    setSuggestions([]);
+    setSearchQuery("");
+  };
 
   const handlePasteWhatsApp = (text: string) => {
     setErrorMsg("");
@@ -98,6 +179,45 @@ export function AddressPickerMap({
     });
   };
 
+  // HTML interactivo para el mapa con pin arrastrable
+  const mapHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <style>
+          body, html, #map { margin: 0; padding: 0; height: 100%; width: 100%; background: #e2e8f0; }
+          .leaflet-control-attribution { display: none !important; }
+        </style>
+      </head>
+      <body>
+        <div id="map"></div>
+        <script>
+          const lat = ${lat};
+          const lng = ${lng};
+          const map = L.map('map', { zoomControl: false }).setView([lat, lng], 15);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+          // Marcador arrastrable (Draggable Pin)
+          const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+          marker.bindPopup("<b>Ubicación de Entrega</b><br>Arrastra el pin para ajustar el punto exacto.").openPopup();
+
+          marker.on('dragend', function(e) {
+            const pos = marker.getLatLng();
+            window.parent.postMessage({ type: 'PIN_MOVED', lat: pos.lat, lng: pos.lng }, '*');
+          });
+
+          map.on('click', function(e) {
+            marker.setLatLng(e.latlng);
+            window.parent.postMessage({ type: 'PIN_MOVED', lat: e.latlng.lat, lng: e.latlng.lng }, '*');
+          });
+        </script>
+      </body>
+    </html>
+  `;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs sm:items-center p-0 sm:p-4">
       <div className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-200">
@@ -109,10 +229,10 @@ export function AddressPickerMap({
             </div>
             <div>
               <h3 className="font-bold text-slate-900 text-sm">
-                Ubicación de Entrega
+                Ubicación de Entrega y Flete
               </h3>
               <p className="text-[11px] text-slate-500">
-                Angostura y comunidades cercanas
+                Busca la dirección o arrastra el pin
               </p>
             </div>
           </div>
@@ -126,13 +246,56 @@ export function AddressPickerMap({
         </div>
 
         {/* Contenido scrolleable */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 no-scrollbar">
+          {/* Buscador de dirección interactivo */}
+          <div className="relative">
+            <label
+              htmlFor="map-search-input"
+              className="block text-xs font-bold text-slate-800 mb-1"
+            >
+              Buscar dirección en el mapa
+            </label>
+            <div className="relative">
+              <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                id="map-search-input"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder="Escribe calle, colonia o poblado (ej. Calle Juárez, Alhuey)..."
+                className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-9 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {isSearching && (
+                <Loader2 className="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin text-blue-600" />
+              )}
+            </div>
+
+            {/* Sugerencias de búsqueda */}
+            {suggestions.length > 0 && (
+              <div className="absolute z-30 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+                {suggestions.map((s) => (
+                  <button
+                    key={s.place_id ? String(s.place_id) : `${s.lat}-${s.lon}`}
+                    type="button"
+                    onClick={() => handleSelectSuggestion(s)}
+                    className="flex w-full items-start gap-2 border-b border-slate-100 p-2.5 text-left text-xs hover:bg-blue-50 last:border-0"
+                  >
+                    <MapPin className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
+                    <span className="text-slate-800 font-medium line-clamp-2">
+                      {s.display_name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Botón Mágico: Pegar ubicación de WhatsApp */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <button
               type="button"
               onClick={handleClipboardRead}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-emerald-500 bg-emerald-50 py-3 px-4 font-bold text-emerald-800 text-xs shadow-xs transition-all hover:bg-emerald-100 active:scale-98"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-emerald-500 bg-emerald-50 py-2.5 px-3 font-bold text-emerald-800 text-xs shadow-xs transition-all hover:bg-emerald-100 active:scale-98"
             >
               <Clipboard className="h-4 w-4 text-emerald-600" />
               <span>📋 Pegar ubicación de WhatsApp</span>
@@ -168,18 +331,20 @@ export function AddressPickerMap({
             )}
           </div>
 
-          {/* Mini Mapa Táctil Interactivo */}
-          <div className="relative h-44 w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 shadow-inner">
+          {/* Mapa Interactivo con Pin Arrastrable */}
+          <div className="relative h-48 w-full rounded-2xl overflow-hidden border border-slate-300 bg-slate-100 shadow-inner">
             <iframe
-              title="Mapa de Entrega"
+              title="Mapa de Entrega Interactivo"
               width="100%"
               height="100%"
               style={{ border: 0 }}
-              loading="lazy"
-              src={`https://maps.google.com/maps?q=${lat},${lng}&z=14&output=embed`}
+              srcDoc={mapHtml}
             />
-            <div className="absolute top-2 right-2 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold text-slate-700 shadow-xs backdrop-blur-xs">
+            <div className="absolute top-2 right-2 rounded-lg bg-white/95 px-2 py-1 text-[10px] font-bold text-slate-800 shadow-xs backdrop-blur-xs">
               📍 {lat.toFixed(4)}, {lng.toFixed(4)}
+            </div>
+            <div className="absolute bottom-2 left-2 rounded-lg bg-black/70 px-2 py-1 text-[10px] font-bold text-white shadow-xs backdrop-blur-xs">
+              Arrastra el pin al punto exacto
             </div>
           </div>
 
@@ -204,21 +369,18 @@ export function AddressPickerMap({
             </div>
           </div>
 
-          {/* Selector de Alias con Chips Familiares */}
+          {/* Selector de Alias */}
           <div>
-            <label
-              htmlFor="mapAliasInput"
-              className="mb-1.5 block font-bold text-slate-800 text-xs"
-            >
+            <span className="mb-1 block font-bold text-slate-800 text-xs">
               ¿Cómo llamamos a esta dirección?
-            </label>
+            </span>
             <div className="flex flex-wrap gap-1.5 mb-2">
               {COMMON_ALIASES.map((item) => (
                 <button
                   key={item.label}
                   type="button"
                   onClick={() => setAlias(item.label)}
-                  className={`flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-all active:scale-95 ${
+                  className={`flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-semibold transition-all active:scale-95 ${
                     alias === item.label
                       ? "bg-blue-600 text-white shadow-xs"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -230,61 +392,60 @@ export function AddressPickerMap({
               ))}
             </div>
             <input
-              id="mapAliasInput"
               type="text"
               value={alias}
               onChange={(e) => setAlias(e.target.value)}
-              placeholder="O escribe otro nombre: ej. Rancho El Refugio"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              placeholder="Ej. Casa de su tía, Salón Los Arcos..."
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          {/* Calle y Número */}
+          {/* Dirección Textual */}
           <div>
             <label
-              htmlFor="mapAddressInput"
-              className="mb-1 block font-semibold text-slate-700 text-xs"
+              htmlFor="addr-text"
+              className="mb-1 block font-bold text-slate-800 text-xs"
             >
-              Calle, Número y Colonia
+              Dirección o Calle
             </label>
             <input
-              id="mapAddressInput"
+              id="addr-text"
               type="text"
               value={addressText}
               onChange={(e) => setAddressText(e.target.value)}
-              placeholder="Ej. Calle Morelos #142, La Palma"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Calle, número exterior y colonia"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          {/* Referencias para el Chofer */}
+          {/* Notas para el chofer */}
           <div>
             <label
-              htmlFor="mapNotesInput"
-              className="mb-1 block font-semibold text-slate-700 text-xs"
+              htmlFor="addr-notes"
+              className="mb-1 block font-bold text-slate-800 text-xs"
             >
               Referencias para el Chofer (Opcional)
             </label>
-            <input
-              id="mapNotesInput"
-              type="text"
+            <textarea
+              id="addr-notes"
               value={deliveryNotes}
               onChange={(e) => setDeliveryNotes(e.target.value)}
-              placeholder="Ej. Portón blanco frente al kínder, entrar por el callejón"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+              rows={2}
+              placeholder="Ej. Portón negro frente a la tienda, entrar por el callejón..."
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
 
-        {/* Botón de Confirmación */}
-        <div className="border-t border-slate-100 p-4 bg-slate-50">
+        {/* Footer */}
+        <div className="border-t border-slate-100 bg-slate-50 p-3">
           <button
             type="button"
             onClick={handleSave}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 font-bold text-sm text-white shadow-md transition-all hover:bg-blue-700 active:scale-98"
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 font-bold text-sm text-white shadow-md hover:bg-blue-700 active:scale-98"
           >
             <Check className="h-4 w-4" />
-            <span>Confirmar Ubicación y Flete</span>
+            <span>Confirmar Ubicación</span>
           </button>
         </div>
       </div>

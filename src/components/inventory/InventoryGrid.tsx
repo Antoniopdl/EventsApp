@@ -1,10 +1,18 @@
 "use client";
 
-import { Boxes, Edit3, FileSpreadsheet, Package, Search } from "lucide-react";
+import {
+  Boxes,
+  Edit3,
+  FileSpreadsheet,
+  Package,
+  PackagePlus,
+  Search,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import type { InventoryItem } from "@/core/domain/inventory";
 import type { UserRole } from "@/core/domain/user";
 import { CategoryFilter } from "./CategoryFilter";
+import { CreatePackageModal } from "./CreatePackageModal";
 import { InventoryCard } from "./InventoryCard";
 
 interface InventoryGridProps {
@@ -16,6 +24,7 @@ interface InventoryGridProps {
     updates: Partial<InventoryItem>,
   ) => Promise<void>;
   onUpdateVariantStock: (variantId: string, newStock: number) => Promise<void>;
+  onPackageCreated?: (pkg: InventoryItem) => void;
 }
 
 export function InventoryGrid({
@@ -24,6 +33,7 @@ export function InventoryGrid({
   onAdjustStock,
   onUpdateDetails,
   onUpdateVariantStock,
+  onPackageCreated,
 }: InventoryGridProps) {
   const [viewType, setViewType] = useState<"paquetes" | "individuales">(
     "paquetes",
@@ -31,6 +41,7 @@ export function InventoryGrid({
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("todas");
   const [isEditMode, setIsEditMode] = useState(false);
+  const [showCreatePackageModal, setShowCreatePackageModal] = useState(false);
 
   const isAdmin = role === "admin";
 
@@ -67,11 +78,11 @@ export function InventoryGrid({
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 font-bold text-xs transition-all ${
               viewType === "paquetes"
                 ? "bg-white text-blue-700 shadow-xs"
-                : "text-slate-500 hover:text-slate-800"
+                : "text-slate-600 hover:text-slate-900"
             }`}
           >
             <Package className="h-4 w-4" />
-            <span>🏷️ Paquetes / Combos</span>
+            <span>Paquetes</span>
           </button>
           <button
             type="button"
@@ -79,17 +90,29 @@ export function InventoryGrid({
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 font-bold text-xs transition-all ${
               viewType === "individuales"
                 ? "bg-white text-blue-700 shadow-xs"
-                : "text-slate-500 hover:text-slate-800"
+                : "text-slate-600 hover:text-slate-900"
             }`}
           >
             <Boxes className="h-4 w-4" />
-            <span>📦 Artículos Sueltos</span>
+            <span>Artículos Sueltos</span>
           </button>
         </div>
 
         {/* Acciones de Administrador */}
         {isAdmin && (
           <div className="flex items-center gap-1.5">
+            {viewType === "paquetes" && (
+              <button
+                type="button"
+                onClick={() => setShowCreatePackageModal(true)}
+                title="Crear Nuevo Paquete"
+                className="flex h-11 items-center gap-1 rounded-2xl bg-blue-600 px-3 font-bold text-xs text-white shadow-xs transition-all hover:bg-blue-700 active:scale-95"
+              >
+                <PackagePlus className="h-4 w-4" />
+                <span className="hidden sm:inline">Nuevo</span>
+              </button>
+            )}
+
             <a
               href="/Inventario_Fer_Eventos.xlsx"
               download="Inventario_Fer_Eventos.xlsx"
@@ -176,6 +199,20 @@ export function InventoryGrid({
           />
         ))}
       </div>
+
+      {/* Modal para Crear Nuevo Paquete */}
+      {showCreatePackageModal && (
+        <CreatePackageModal
+          availableItems={items}
+          onPackageCreated={(newPkg) => {
+            if (onPackageCreated) {
+              onPackageCreated(newPkg);
+            }
+          }}
+          onClose={() => setShowCreatePackageModal(false)}
+          onNotification={() => {}}
+        />
+      )}
     </div>
   );
 }

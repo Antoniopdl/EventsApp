@@ -83,6 +83,74 @@ export async function updateItemDetailsInDb(
 }
 
 /**
+ * Crea un nuevo paquete en Supabase con su receta de piezas.
+ */
+export async function createPackageInDb(
+  packageData: {
+    name: string;
+    rental_price: number;
+    capacity_people: number;
+    total_stock: number;
+    sku?: string;
+  },
+  components: { component_item_id: string; quantity: number }[],
+): Promise<InventoryItem | null> {
+  const sku = packageData.sku || `PAQ-${Date.now().toString().slice(-6)}`;
+
+  if (!isSupabaseConfigured || !supabase) {
+    const newItem: InventoryItem = {
+      id: `local-pkg-${Date.now()}`,
+      sku,
+      name: packageData.name,
+      category: "paquetes",
+      item_type: "paquete",
+      rental_price: packageData.rental_price,
+      replacement_price: packageData.rental_price * 5,
+      total_stock: packageData.total_stock,
+      capacity_people: packageData.capacity_people,
+      buffer_cleanup_hours: 4,
+      is_active: true,
+    };
+    return newItem;
+  }
+
+  // 1. Insertar paquete en inventory_items
+  const { data: pkg, error: pkgErr } = await supabase
+    .from("inventory_items")
+    .insert([
+      {
+        sku,
+        name: packageData.name,
+        category: "paquetes",
+        item_type: "paquete",
+        rental_price: packageData.rental_price,
+        total_stock: packageData.total_stock,
+        capacity_people: packageData.capacity_people,
+        is_active: true,
+      },
+    ])
+    .select()
+    .single();
+
+  if (pkgErr || !pkg) {
+    console.error("Error al crear paquete:", pkgErr);
+    return null;
+  }
+
+  // 2. Insertar componentes en package_items
+  if (components.length > 0) {
+    const compRows = components.map((c) => ({
+      package_id: pkg.id,
+      component_item_id: c.component_item_id,
+      quantity: c.quantity,
+    }));
+    await supabase.from("package_items").insert(compRows);
+  }
+
+  return pkg as InventoryItem;
+}
+
+/**
  * Suscripción en tiempo real (WebSockets) a cambios en inventario.
  */
 export function subscribeToInventoryRealtime(
