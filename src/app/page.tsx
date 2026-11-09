@@ -16,7 +16,9 @@ import { isSupabaseConfigured } from "@/infrastructure/supabase/client";
 import {
   getInventoryItems,
   subscribeToInventoryRealtime,
+  updateItemDetailsInDb,
   updateItemStockInDb,
+  updateVariantStockInDb,
 } from "@/infrastructure/supabase/inventory-repository";
 
 export default function Home() {
@@ -73,6 +75,46 @@ export default function Home() {
     await updateItemStockInDb(id, newStock);
   };
 
+  const handleUpdateDetails = async (
+    id: string,
+    updates: Partial<InventoryItem>,
+  ) => {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...updates } : item)),
+    );
+    const success = await updateItemDetailsInDb(id, updates);
+    if (success) {
+      showNotification("Datos guardados automáticamente");
+    } else {
+      showNotification("Error al guardar en el servidor");
+    }
+  };
+
+  const handleUpdateVariantStock = async (
+    variantId: string,
+    newStock: number,
+  ) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (!item.variants) return item;
+        const hasVariant = item.variants.some((v) => v.id === variantId);
+        if (!hasVariant) return item;
+        return {
+          ...item,
+          variants: item.variants.map((v) =>
+            v.id === variantId ? { ...v, total_stock: newStock } : v,
+          ),
+        };
+      }),
+    );
+    const success = await updateVariantStockInDb(variantId, newStock);
+    if (success) {
+      showNotification(`Stock de variante actualizado: ${newStock}`);
+    } else {
+      showNotification("Error al actualizar variante");
+    }
+  };
+
   const handleStartQuoteFromClient = (
     client: ClientWithStats,
     address?: ClientAddress,
@@ -124,6 +166,8 @@ export default function Home() {
               items={items}
               role={role}
               onAdjustStock={handleAdjustStock}
+              onUpdateDetails={handleUpdateDetails}
+              onUpdateVariantStock={handleUpdateVariantStock}
             />
           )}
 

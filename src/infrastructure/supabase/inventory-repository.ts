@@ -3,7 +3,7 @@ import { INITIAL_INVENTORY_SEED } from "@/core/use-cases/inventory";
 import { isSupabaseConfigured, supabase } from "./client";
 
 /**
- * Obtiene el inventario activo de Supabase o retorna la semilla si no está configurado.
+ * Obtiene el inventario activo de Supabase con sus variantes de color y componentes de paquetes.
  */
 export async function getInventoryItems(): Promise<InventoryItem[]> {
   if (!isSupabaseConfigured || !supabase) {
@@ -12,50 +12,18 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
 
   const { data, error } = await supabase
     .from("inventory_items")
-    .select("*")
+    .select(
+      "*, variants:inventory_item_variants(*), package_components:package_items(*, component_item:inventory_items(*))",
+    )
     .eq("is_active", true)
     .order("name", { ascending: true });
 
-  if (error) {
-    console.error("Error al consultar inventario en Supabase:", error.message);
-    return INITIAL_INVENTORY_SEED;
-  }
-
-  // Si la tabla en Supabase está vacía, la poblamos automáticamente con el catálogo inicial
-  if (!data || data.length === 0) {
-    await seedInventoryIfEmpty();
+  if (error || !data) {
+    console.error("Error al consultar inventario en Supabase:", error?.message);
     return INITIAL_INVENTORY_SEED;
   }
 
   return data as InventoryItem[];
-}
-
-/**
- * Puebla el catálogo inicial en la base de datos de Supabase.
- */
-export async function seedInventoryIfEmpty(): Promise<void> {
-  if (!isSupabaseConfigured || !supabase) return;
-
-  const itemsToInsert = INITIAL_INVENTORY_SEED.map((item) => ({
-    sku: item.sku,
-    name: item.name,
-    category: item.category,
-    description: item.description,
-    total_stock: item.total_stock,
-    rental_price: item.rental_price,
-    replacement_price: item.replacement_price,
-    image_url: item.image_url,
-    buffer_cleanup_hours: item.buffer_cleanup_hours,
-    is_active: item.is_active,
-  }));
-
-  const { error } = await supabase
-    .from("inventory_items")
-    .insert(itemsToInsert);
-
-  if (error) {
-    console.error("Error al poblar catálogo inicial:", error.message);
-  }
 }
 
 /**
@@ -72,16 +40,50 @@ export async function updateItemStockInDb(
     .update({ total_stock: newStock, updated_at: new Date().toISOString() })
     .eq("id", id);
 
-  if (error) {
-    console.error("Error al actualizar stock en Supabase:", error.message);
-    return false;
-  }
-
-  return true;
+  return !error;
 }
 
 /**
- * Suscripción en tiempo real (WebSockets) a cambios en la tabla de inventario.
+ * Actualiza el stock de una variante de color específica (ej. Sobremantel Azul Rey).
+ */
+export async function updateVariantStockInDb(
+  variantId: string,
+  newStock: number,
+): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+
+  const { error } = await supabase
+    .from("inventory_item_variants")
+    .update({ total_stock: newStock, updated_at: new Date().toISOString() })
+    .eq("id", variantId);
+
+  return !error;
+}
+
+/**
+ * Actualiza datos del producto (precio de renta o stock) desde el Modo Edición.
+ */
+export async function updateItemDetailsInDb(
+  id: string,
+  updates: Partial<InventoryItem>,
+): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return true;
+
+  const { error } = await supabase
+    .from("inventory_items")
+    .update({
+      name: updates.name,
+      rental_price: updates.rental_price,
+      total_stock: updates.total_stock,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  return !error;
+}
+
+/**
+ * Suscripción en tiempo real (WebSockets) a cambios en inventario.
  */
 export function subscribeToInventoryRealtime(
   onUpdate: (updatedItem: InventoryItem) => void,
