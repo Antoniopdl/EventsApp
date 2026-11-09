@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, Edit3, Package, Search } from "lucide-react";
+import { Boxes, Edit3, FileSpreadsheet, Package, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { InventoryItem } from "@/core/domain/inventory";
 import type { UserRole } from "@/core/domain/user";
@@ -87,25 +87,37 @@ export function InventoryGrid({
           </button>
         </div>
 
-        {/* Botón Maestro de Lápiz ✏️ para Modo Edición */}
+        {/* Acciones de Administrador */}
         {isAdmin && (
-          <button
-            type="button"
-            onClick={() => setIsEditMode((prev) => !prev)}
-            title={
-              isEditMode ? "Guardar y Salir" : "Editar precios y existencias"
-            }
-            className={`flex h-11 items-center gap-1 rounded-2xl px-3 font-bold text-xs transition-all active:scale-95 ${
-              isEditMode
-                ? "bg-amber-500 text-white shadow-md ring-2 ring-amber-300"
-                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-            }`}
-          >
-            <Edit3 className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              {isEditMode ? "Listo" : "Editar"}
-            </span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <a
+              href="/Inventario_Fer_Eventos.xlsx"
+              download="Inventario_Fer_Eventos.xlsx"
+              title="Descargar Excel para Mamá"
+              className="flex h-11 items-center gap-1 rounded-2xl border border-emerald-200 bg-emerald-50 px-2.5 font-bold text-xs text-emerald-700 shadow-xs transition-all hover:bg-emerald-100 active:scale-95"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              <span className="hidden sm:inline">Excel</span>
+            </a>
+
+            <button
+              type="button"
+              onClick={() => setIsEditMode((prev) => !prev)}
+              title={
+                isEditMode ? "Guardar y Salir" : "Editar precios y existencias"
+              }
+              className={`flex h-11 items-center gap-1 rounded-2xl px-3 font-bold text-xs transition-all active:scale-95 ${
+                isEditMode
+                  ? "bg-amber-500 text-white shadow-md ring-2 ring-amber-300"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <Edit3 className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {isEditMode ? "Listo" : "Editar"}
+              </span>
+            </button>
+          </div>
         )}
       </div>
 
