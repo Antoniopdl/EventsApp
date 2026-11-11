@@ -82,6 +82,8 @@ export function QuoteWizard({
   // Finanzas ajustables
   const [deposit, setDeposit] = useState<number>(0); // Default $0
   const [advancePayment, setAdvancePayment] = useState<number>(0);
+  const [requiresSetup, setRequiresSetup] = useState(false);
+  const [setupFee, setSetupFee] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmedBookingFolio, setConfirmedBookingFolio] = useState<
     string | null
@@ -155,7 +157,7 @@ export function QuoteWizard({
   };
 
   const subtotal = calculateSubtotal();
-  const total = subtotal + freightCost + deposit;
+  const total = subtotal + freightCost + setupFee + deposit;
   const balanceDue = Math.max(0, total - advancePayment);
 
   // Filtrado de mobiliario en Paso 2
@@ -228,6 +230,8 @@ export function QuoteWizard({
         security_deposit: deposit,
         advance_payment: advancePayment,
         total_amount: total,
+        requires_setup: requiresSetup,
+        setup_fee: setupFee,
       },
       bookingItems,
     );
@@ -264,7 +268,10 @@ export function QuoteWizard({
       `🚚 *Lugar de Entrega:* ${addressAlias} (${address})\n` +
       (deliveryNotes ? `📌 *Referencias:* ${deliveryNotes}\n` : "") +
       `💰 *Subtotal Mobiliario:* ${formatCurrency(subtotal)}\n` +
-      `🚚 *Flete y Montaje:* ${formatCurrency(freightCost)}\n` +
+      `🚚 *Flete:* ${formatCurrency(freightCost)}\n` +
+      (requiresSetup
+        ? `🛠️ *Servicio de Montaje Completo:* ${formatCurrency(setupFee)}\n`
+        : "") +
       (deposit > 0
         ? `🛡️ *Depósito en Garantía (Reembolsable):* ${formatCurrency(deposit)}\n`
         : "") +
@@ -654,6 +661,33 @@ export function QuoteWizard({
             </div>
           </div>
 
+          {/* Opción de Montaje Completo */}
+          <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div>
+              <span className="font-bold text-slate-950 text-xs block">
+                ¿Deseas montaje completo?
+              </span>
+              <span className="text-[10px] text-slate-500">
+                (Personal abre mesas y acomoda sillas y manteles)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const nextVal = !requiresSetup;
+                setRequiresSetup(nextVal);
+                setSetupFee(nextVal ? 300 : 0);
+              }}
+              className={`rounded-xl px-3 py-1.5 font-bold text-xs transition-all active:scale-95 ${
+                requiresSetup
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              {requiresSetup ? "✓ Sí (+$300)" : "No (a pie de camión)"}
+            </button>
+          </div>
+
           <div className="flex gap-2 pt-2">
             <button
               type="button"
@@ -711,12 +745,22 @@ export function QuoteWizard({
             </div>
             <div className="flex justify-between">
               <span className="text-slate-700 font-medium">
-                Flete y Montaje:
+                Flete de Entrega:
               </span>
               <span className="font-bold text-slate-900">
                 {formatCurrency(freightCost)}
               </span>
             </div>
+            {requiresSetup && (
+              <div className="flex justify-between">
+                <span className="text-slate-700 font-medium">
+                  Servicio de Montaje:
+                </span>
+                <span className="font-bold text-slate-900">
+                  {formatCurrency(setupFee)}
+                </span>
+              </div>
+            )}
 
             {/* Depósito en Garantía (Default $0) */}
             <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 p-2">

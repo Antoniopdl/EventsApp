@@ -24,6 +24,9 @@ export async function createBookingInDb(
     security_deposit: number;
     advance_payment: number;
     total_amount: number;
+    requires_setup?: boolean;
+    setup_fee?: number;
+    assigned_vehicle_id?: string | null;
   },
   items: { item_id: string; quantity: number; unit_price_applied: number }[],
 ): Promise<Booking | null> {
@@ -65,6 +68,9 @@ export async function createBookingInDb(
       balance_due: balanceDue,
       total_amount: bookingData.total_amount,
       payment_status: paymentStatus,
+      requires_setup: bookingData.requires_setup || false,
+      setup_fee: bookingData.setup_fee || 0,
+      assigned_vehicle_id: bookingData.assigned_vehicle_id || null,
     };
   }
 
@@ -121,6 +127,9 @@ export async function createBookingInDb(
         balance_due: balanceDue,
         total_amount: bookingData.total_amount,
         payment_status: paymentStatus,
+        requires_setup: bookingData.requires_setup || false,
+        setup_fee: bookingData.setup_fee || 0,
+        assigned_vehicle_id: bookingData.assigned_vehicle_id || null,
         notes: bookingData.delivery_notes,
       },
     ])

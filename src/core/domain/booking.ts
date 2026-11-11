@@ -52,6 +52,10 @@ export interface Booking {
   client_phone?: string;
   address_alias?: string;
   address_id?: string;
+  assigned_vehicle_id?: string | null;
+  requires_setup?: boolean;
+  setup_fee?: number;
+  delivery_sequence?: number;
   notes?: string | null;
   created_at?: string;
   updated_at?: string;
