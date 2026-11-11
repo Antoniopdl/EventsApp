@@ -1,5 +1,5 @@
 import type { Booking } from "@/core/domain/booking";
-import type { Vehicle } from "@/core/domain/logistics";
+import { FLEET_DEFAULTS, type Vehicle } from "@/core/domain/logistics";
 import { FER_EVENTOS_CONFIG } from "@/core/domain/user";
 import { calculateDistanceToBodega } from "@/lib/location-parser";
 
@@ -89,14 +89,20 @@ export function optimizeRouteAndRecommendVehicle(
   // - La que más se usa es la Nissan para eventos chicos o medianos (hasta 8 paquetes)
   // - Si es evento grande y lejos: Dutty (o Nissan + Dutty)
   // - Si es algo súper grande o mucha decoración: Tacoma con Remolque/Traila
+  const activeFleet =
+    vehicles && vehicles.length > 0 ? vehicles : FLEET_DEFAULTS;
   const nissan =
-    vehicles.find((v) => v.name.toLowerCase().includes("nissan")) ||
-    vehicles[0];
+    activeFleet.find((v) => v.name.toLowerCase().includes("nissan")) ||
+    activeFleet[0] ||
+    FLEET_DEFAULTS[0];
   const tacoma =
-    vehicles.find((v) => v.name.toLowerCase().includes("tacoma")) ||
-    vehicles[1];
+    activeFleet.find((v) => v.name.toLowerCase().includes("tacoma")) ||
+    activeFleet[1] ||
+    FLEET_DEFAULTS[1];
   const dutty =
-    vehicles.find((v) => v.name.toLowerCase().includes("dutty")) || vehicles[2];
+    activeFleet.find((v) => v.name.toLowerCase().includes("dutty")) ||
+    activeFleet[2] ||
+    FLEET_DEFAULTS[2];
 
   let selected = nissan;
   let reason = "Ideal para el volumen del día (menor costo de gasolina).";
@@ -111,7 +117,8 @@ export function optimizeRouteAndRecommendVehicle(
       "Volumen medio/alto o decoración voluminosa: se asigna Tacoma con Traila.";
   }
 
-  const fuelCost = Math.round(estimatedTotalKm * selected.fuel_cost_per_km);
+  const fuelRate = selected?.fuel_cost_per_km || 2.72;
+  const fuelCost = Math.round(estimatedTotalKm * fuelRate);
   const mapsUrl = generateGoogleMapsMultiStopUrl(
     dayBookings.map((b) => ({
       address: b.event_address,

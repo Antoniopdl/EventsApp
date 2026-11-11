@@ -16,7 +16,11 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Booking } from "@/core/domain/booking";
-import type { FuelLog, Vehicle } from "@/core/domain/logistics";
+import {
+  FLEET_DEFAULTS,
+  type FuelLog,
+  type Vehicle,
+} from "@/core/domain/logistics";
 import type { UserRole } from "@/core/domain/user";
 import {
   optimizeRouteAndRecommendVehicle,
@@ -43,7 +47,7 @@ export function LogisticsTimeline({
 }: LogisticsTimelineProps) {
   const [selectedDate, setSelectedDate] = useState("2026-11-14");
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>(FLEET_DEFAULTS);
   const [fuelLogs, setFuelLogs] = useState<FuelLog[]>([]);
   const [completedStops, setCompletedStops] = useState<Record<string, boolean>>(
     {},
@@ -218,7 +222,7 @@ export function LogisticsTimeline({
               </div>
               <div>
                 <p className="font-bold text-slate-900 text-xs">
-                  {routeOptimization.recommendedVehicle.name}
+                  {routeOptimization.recommendedVehicle?.name || "Nissan NP300"}
                 </p>
                 <p className="text-[10px] text-slate-500">
                   {routeOptimization.totalPackages} paquetes totales en ruta

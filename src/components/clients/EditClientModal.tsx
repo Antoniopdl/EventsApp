@@ -18,6 +18,7 @@ export function EditClientModal({
 }: EditClientModalProps) {
   const [fullName, setFullName] = useState(client.full_name);
   const [phone, setPhone] = useState(client.phone_whatsapp);
+  const [email, setEmail] = useState(client.email || "");
   const [notes, setNotes] = useState(client.notes || "");
   const [errorMsg, setErrorMsg] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -29,7 +30,8 @@ export function EditClientModal({
     const validation = ClientSchema.safeParse({
       full_name: fullName,
       phone_whatsapp: phone,
-      notes: notes || null,
+      email: email.trim() || null,
+      notes: notes.trim() || null,
     });
 
     if (!validation.success) {
@@ -42,6 +44,7 @@ export function EditClientModal({
       await onSave({
         full_name: fullName.trim(),
         phone_whatsapp: phone.trim(),
+        email: email.trim() || null,
         notes: notes.trim() || null,
       });
       onClose();
@@ -75,7 +78,7 @@ export function EditClientModal({
         </div>
 
         {/* Formulario */}
-        <form onSubmit={handleSubmit} className="p-4 space-y-3.5">
+        <form onSubmit={handleSubmit} className="p-4 space-y-3">
           {errorMsg && (
             <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700 font-medium">
               {errorMsg}
@@ -100,22 +103,41 @@ export function EditClientModal({
             />
           </div>
 
-          <div>
-            <label
-              htmlFor="clientPhoneInput"
-              className="mb-1 block font-semibold text-slate-700 text-xs"
-            >
-              Teléfono de WhatsApp (10 dígitos)
-            </label>
-            <input
-              id="clientPhoneInput"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Ej. 6971034488"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-              required
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label
+                htmlFor="clientPhoneInput"
+                className="mb-1 block font-semibold text-slate-700 text-xs"
+              >
+                WhatsApp (10 dígitos)
+              </label>
+              <input
+                id="clientPhoneInput"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Ej. 6971034488"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                required
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="clientEmailInput"
+                className="mb-1 block font-semibold text-slate-700 text-xs"
+              >
+                Correo (Opcional)
+              </label>
+              <input
+                id="clientEmailInput"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="ejemplo@correo.com"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              />
+            </div>
           </div>
 
           <div>

@@ -1,7 +1,10 @@
 "use client";
 
 import {
+  Award,
   Calendar,
+  CheckCircle2,
+  Clock,
   Edit2,
   ExternalLink,
   MapPin,
@@ -11,7 +14,11 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import type { ClientAddress, ClientDetails } from "@/core/domain/client";
+import {
+  type ClientAddress,
+  type ClientDetails,
+  getClientLoyaltyTier,
+} from "@/core/domain/client";
 import { formatCurrency } from "@/lib/utils";
 import { EditAddressModal } from "./EditAddressModal";
 import { EditClientModal } from "./EditClientModal";
@@ -45,6 +52,8 @@ export function ClientDetailModal({
   );
   const [showNewAddress, setShowNewAddress] = useState(false);
 
+  const loyalty = getClientLoyaltyTier(client.bookings_count);
+
   const handleOpenWhatsApp = () => {
     const cleanPhone = client.phone_whatsapp.replace(/\D/g, "");
     const url = `https://wa.me/52${cleanPhone}?text=${encodeURIComponent(
@@ -72,11 +81,19 @@ export function ClientDetailModal({
                 {client.full_name.substring(0, 2).toUpperCase()}
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-sm">
-                  {client.full_name}
-                </h3>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    {client.full_name}
+                  </h3>
+                  <span
+                    className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.2 text-[9px] font-bold ${loyalty.bgClass} ${loyalty.colorClass} border ${loyalty.borderClass}`}
+                  >
+                    {loyalty.badge}
+                  </span>
+                </div>
                 <p className="text-[11px] text-slate-500 font-medium">
                   {client.phone_whatsapp}
+                  {client.email ? ` • ${client.email}` : ""}
                 </p>
               </div>
             </div>
@@ -90,7 +107,7 @@ export function ClientDetailModal({
           </div>
 
           {/* Contenido scrolleable */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3.5 no-scrollbar">
             {/* Acciones Rápidas */}
             <div className="flex gap-2">
               <button
@@ -111,6 +128,65 @@ export function ClientDetailModal({
               </button>
             </div>
 
+            {/* Tarjeta del Sistema de Lealtad (Club Fer Eventos) */}
+            <div
+              className={`rounded-2xl border p-3.5 space-y-2.5 ${loyalty.bgClass} ${loyalty.borderClass}`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-white shadow-xs">
+                    <Award className="h-4 w-4 text-amber-600" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                      Sistema de Lealtad
+                    </span>
+                    <h4 className="font-extrabold text-xs text-slate-900">
+                      {loyalty.tierName}
+                    </h4>
+                  </div>
+                </div>
+                <span className="font-black text-xs text-slate-800">
+                  {client.bookings_count}{" "}
+                  {client.bookings_count === 1 ? "Renta" : "Rentas"}
+                </span>
+              </div>
+
+              {/* Barra de Progreso hacia el siguiente nivel */}
+              {loyalty.nextTierName && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] text-slate-600 font-semibold">
+                    <span>Meta: {loyalty.nextTierName}</span>
+                    <span>
+                      {client.bookings_count} de {loyalty.nextTierBookings}{" "}
+                      rentas
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200/80">
+                    <div
+                      className="h-full rounded-full bg-blue-600 transition-all duration-500"
+                      style={{ width: `${loyalty.progressPercent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Beneficios Desbloqueados */}
+              <div className="rounded-xl bg-white/80 p-2 text-[10px] space-y-1 border border-slate-200/60">
+                <span className="font-bold text-slate-800 block">
+                  ✨ Beneficios de su nivel:
+                </span>
+                <ul className="space-y-0.5 text-slate-700">
+                  {loyalty.benefits.map((b) => (
+                    <li key={b} className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
             {/* Notas familiares */}
             {client.notes && (
               <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900">
@@ -121,11 +197,11 @@ export function ClientDetailModal({
               </div>
             )}
 
-            {/* Estadísticas rápidas */}
+            {/* Estadísticas de gasto e historial */}
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-center">
                 <span className="text-[10px] font-medium text-slate-500 uppercase">
-                  Eventos Rentados
+                  Eventos Totales
                 </span>
                 <p className="font-bold text-slate-900 text-base">
                   {client.bookings_count}
@@ -133,7 +209,7 @@ export function ClientDetailModal({
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-center">
                 <span className="text-[10px] font-medium text-slate-500 uppercase">
-                  Total Invertido
+                  Total Histórico
                 </span>
                 <p className="font-bold text-blue-700 text-base">
                   {formatCurrency(client.total_spent)}
@@ -141,7 +217,7 @@ export function ClientDetailModal({
               </div>
             </div>
 
-            {/* Sección de Direcciones Familiares */}
+            {/* Sección de Direcciones Frecuentes */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h4 className="font-bold text-slate-900 text-xs">
@@ -216,10 +292,14 @@ export function ClientDetailModal({
 
             {/* Historial de Rentas */}
             <div className="space-y-2">
-              <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5 text-blue-600" />
-                <span>Historial de Rentas y Eventos</span>
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-blue-600" />
+                  <span>
+                    Historial de Rentas y Eventos ({client.bookings.length})
+                  </span>
+                </h4>
+              </div>
 
               {client.bookings.length === 0 ? (
                 <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-center text-xs text-slate-400">
@@ -230,25 +310,55 @@ export function ClientDetailModal({
                   {client.bookings.map((booking) => (
                     <div
                       key={booking.id}
-                      className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs space-y-1"
+                      className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs space-y-1.5"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-[11px] text-blue-700">
-                          {booking.delivery_datetime.substring(0, 10)}
+                        <span className="font-bold text-[11px] text-blue-700 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          <span>
+                            {booking.delivery_datetime
+                              ? new Date(
+                                  booking.delivery_datetime,
+                                ).toLocaleDateString("es-MX", {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })
+                              : "Fecha pendiente"}
+                          </span>
                         </span>
-                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 capitalize">
-                          {booking.status}
+                        <span className="rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.2 text-[10px] font-bold capitalize">
+                          {booking.status || "Completada"}
                         </span>
                       </div>
-                      <p className="font-semibold text-xs text-slate-800">
-                        {booking.event_address}
+
+                      <p className="font-semibold text-xs text-slate-800 line-clamp-1">
+                        📍 {booking.event_address}
                       </p>
-                      <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500">
-                        <span>
+
+                      {/* Resumen de Mobiliario */}
+                      {booking.items && booking.items.length > 0 && (
+                        <div className="rounded-lg bg-slate-50 p-1.5 text-[10px] text-slate-700">
+                          <span className="font-bold text-slate-900">
+                            Mobiliario:{" "}
+                          </span>
+                          {booking.items
+                            .map(
+                              (it) =>
+                                `${it.quantity}x ${it.item_name || "Mobiliario"}`,
+                            )
+                            .join(", ")}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between pt-0.5 text-[11px]">
+                        <span className="font-bold text-slate-900">
                           Total: {formatCurrency(booking.total_amount)}
                         </span>
-                        <span className="font-medium text-emerald-700">
-                          {booking.payment_status}
+                        <span className="font-semibold text-emerald-700">
+                          {booking.balance_due && booking.balance_due > 0
+                            ? `Saldo pend: ${formatCurrency(booking.balance_due)}`
+                            : "Pagado completo"}
                         </span>
                       </div>
                     </div>

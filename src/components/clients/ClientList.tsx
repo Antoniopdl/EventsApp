@@ -2,12 +2,14 @@
 
 import { MessageCircle, Plus, Search, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type {
-  ClientAddress,
-  ClientDetails,
-  ClientWithStats,
+import {
+  type ClientAddress,
+  type ClientDetails,
+  type ClientWithStats,
+  getClientLoyaltyTier,
 } from "@/core/domain/client";
 import {
+  createClientInDb,
   deleteClientAddressInDb,
   getClientDetails,
   getClientsWithStats,
@@ -57,8 +59,14 @@ export function ClientList({
   };
 
   const handleSelectClient = async (client: ClientWithStats) => {
-    const details = await getClientDetails(client.id);
-    if (details) setSelectedClient(details);
+    let details = await getClientDetails(client.id);
+    if (!details) {
+      details = {
+        ...client,
+        bookings: [],
+      };
+    }
+    setSelectedClient(details);
   };
 
   const handleUpdateClient = async (updated: Partial<ClientDetails>) => {
@@ -124,7 +132,7 @@ export function ClientList({
       {/* Métricas rápidas */}
       <div className="flex items-center justify-between px-1 text-[11px] text-slate-500">
         <span>{clients.length} clientas registradas</span>
-        <span>Angostura y alrededores</span>
+        <span>Sistema de Lealtad Activo</span>
       </div>
 
       {/* Lista de Clientas */}
@@ -144,59 +152,71 @@ export function ClientList({
         </div>
       ) : (
         <div className="space-y-2">
-          {clients.map((c) => (
-            <div
-              key={c.id}
-              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 shadow-xs hover:border-blue-300 transition-all"
-            >
-              <button
-                type="button"
-                onClick={() => handleSelectClient(c)}
-                className="flex items-center gap-2.5 flex-1 text-left active:scale-99"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 font-bold text-xs shrink-0">
-                  {c.full_name.substring(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 text-xs">
-                    {c.full_name}
-                  </h4>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    {c.phone_whatsapp}
-                  </p>
-                  {c.addresses.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {c.addresses.slice(0, 2).map((addr) => (
-                        <span
-                          key={addr.id}
-                          className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-600"
-                        >
-                          {addr.alias}
-                        </span>
-                      ))}
-                      {c.addresses.length > 2 && (
-                        <span className="text-[9px] text-slate-400">
-                          +{c.addresses.length - 2}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </button>
+          {clients.map((c) => {
+            const loyalty = getClientLoyaltyTier(c.bookings_count);
 
-              <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={`https://wa.me/52${c.phone_whatsapp.replace(/\D/g, "")}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 active:scale-95"
+            return (
+              <div
+                key={c.id}
+                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 shadow-xs hover:border-blue-300 transition-all"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSelectClient(c)}
+                  className="flex items-center gap-2.5 flex-1 text-left active:scale-99"
                 >
-                  <MessageCircle className="h-4 w-4" />
-                </a>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 font-bold text-xs shrink-0">
+                    {c.full_name.substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-bold text-slate-900 text-xs">
+                        {c.full_name}
+                      </h4>
+                      <span
+                        className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.2 text-[9px] font-bold ${loyalty.bgClass} ${loyalty.colorClass} border ${loyalty.borderClass}`}
+                      >
+                        {loyalty.badge}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      {c.phone_whatsapp} • {c.bookings_count}{" "}
+                      {c.bookings_count === 1 ? "evento" : "eventos"}
+                    </p>
+                    {c.addresses.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {c.addresses.slice(0, 2).map((addr) => (
+                          <span
+                            key={addr.id}
+                            className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-600"
+                          >
+                            {addr.alias}
+                          </span>
+                        ))}
+                        {c.addresses.length > 2 && (
+                          <span className="text-[9px] text-slate-400">
+                            +{c.addresses.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </button>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={`https://wa.me/52${c.phone_whatsapp.replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 active:scale-95"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </a>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -218,8 +238,12 @@ export function ClientList({
         <EditClientModal
           client={{ id: "", full_name: "", phone_whatsapp: "", notes: "" }}
           onSave={async (newCli) => {
-            const ok = await updateClientInDb(`cli-${Date.now()}`, newCli);
-            if (ok) {
+            const created = await createClientInDb({
+              full_name: newCli.full_name || "",
+              phone_whatsapp: newCli.phone_whatsapp || "",
+              notes: newCli.notes,
+            });
+            if (created) {
               onNotification("Nueva clienta registrada con éxito");
               loadClients();
             }

@@ -23,6 +23,9 @@ export function CreatePackageModal({
   const [rentalPrice, setRentalPrice] = useState<number>(250);
   const [capacityPeople, setCapacityPeople] = useState<number>(10);
   const [totalStock, setTotalStock] = useState<number>(20);
+  const [imageUrl, setImageUrl] = useState<string>(
+    "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=300&q=80",
+  );
   const [selectedComponents, setSelectedComponents] = useState<
     Record<string, number>
   >({});
@@ -75,6 +78,7 @@ export function CreatePackageModal({
         rental_price: rentalPrice,
         capacity_people: capacityPeople,
         total_stock: totalStock,
+        image_url: imageUrl,
       },
       componentList,
     );
@@ -137,6 +141,24 @@ export function CreatePackageModal({
               placeholder="Ej. Paquete Redondo Fiesta 10p"
               className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500"
               required
+            />
+          </div>
+
+          {/* Foto del paquete */}
+          <div>
+            <label
+              htmlFor="pkg-photo"
+              className="block text-[11px] font-bold text-slate-800 mb-1"
+            >
+              Foto del Paquete (URL)
+            </label>
+            <input
+              id="pkg-photo"
+              type="url"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
