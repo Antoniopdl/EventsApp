@@ -1,12 +1,12 @@
 "use client";
 
-import { KeyRound, ShieldCheck, UserPlus, X } from "lucide-react";
+import { Edit2, ShieldCheck, UserPlus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { AppUser, UserRole } from "@/core/domain/user";
 import {
   createAppUser,
   getAppUsers,
-  updateUserPin,
+  updateAppUserDetails,
 } from "@/infrastructure/supabase/user-repository";
 
 interface UserSettingsModalProps {
@@ -20,6 +20,8 @@ export function UserSettingsModal({
 }: UserSettingsModalProps) {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editFullName, setEditFullName] = useState("");
+  const [editRole, setEditRole] = useState<UserRole>("driver");
   const [newPin, setNewPin] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
 
@@ -37,20 +39,28 @@ export function UserSettingsModal({
     loadUsers();
   }, [loadUsers]);
 
-  const handleSavePin = async (userId: string) => {
+  const handleSaveUserChanges = async (userId: string) => {
+    if (!editFullName.trim()) {
+      onNotification("El nombre no puede estar vacío.");
+      return;
+    }
     if (newPin.length !== 6 || !/^\d{6}$/.test(newPin)) {
       onNotification("El PIN debe ser exactamente de 6 dígitos numéricos.");
       return;
     }
 
-    const ok = await updateUserPin(userId, newPin);
+    const ok = await updateAppUserDetails(userId, {
+      full_name: editFullName,
+      role: editRole,
+      pin_code: newPin,
+    });
     if (ok) {
-      onNotification("PIN actualizado correctamente.");
+      onNotification("Datos y permisos de usuario actualizados.");
       setEditingUserId(null);
       setNewPin("");
       loadUsers();
     } else {
-      onNotification("Error al actualizar el PIN.");
+      onNotification("Error al actualizar el usuario.");
     }
   };
 
@@ -253,33 +263,69 @@ export function UserSettingsModal({
                     </span>
                   </div>
 
-                  {/* Edición de PIN */}
+                  {/* Edición de Nombre, Rol y PIN */}
                   {isEditing ? (
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
-                      <input
-                        type="password"
-                        maxLength={6}
-                        value={newPin}
-                        onChange={(e) =>
-                          setNewPin(e.target.value.replace(/\D/g, ""))
-                        }
-                        placeholder="Nuevo PIN (6 dígitos)"
-                        className="flex-1 rounded-xl border border-slate-300 bg-white px-2.5 py-1 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleSavePin(u.id)}
-                        className="rounded-xl bg-emerald-600 px-3 py-1 text-xs font-bold text-white shadow-xs hover:bg-emerald-700"
-                      >
-                        Guardar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingUserId(null)}
-                        className="rounded-xl bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300"
-                      >
-                        Cancelar
-                      </button>
+                    <div className="space-y-2 pt-2 border-t border-slate-200/80">
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                          Nombre Completo
+                        </span>
+                        <input
+                          type="text"
+                          value={editFullName}
+                          onChange={(e) => setEditFullName(e.target.value)}
+                          className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                            Permisos / Rol
+                          </span>
+                          <select
+                            value={editRole}
+                            onChange={(e) =>
+                              setEditRole(e.target.value as UserRole)
+                            }
+                            className="w-full rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="driver">Entregas / Chofer</option>
+                            <option value="admin">Administración</option>
+                          </select>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                            PIN (6 dígitos)
+                          </span>
+                          <input
+                            type="text"
+                            maxLength={6}
+                            value={newPin}
+                            onChange={(e) =>
+                              setNewPin(e.target.value.replace(/\D/g, ""))
+                            }
+                            className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveUserChanges(u.id)}
+                          className="flex-1 rounded-xl bg-emerald-600 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700"
+                        >
+                          Guardar Cambios
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingUserId(null)}
+                          className="rounded-xl bg-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-300"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-xs">
@@ -290,12 +336,14 @@ export function UserSettingsModal({
                         type="button"
                         onClick={() => {
                           setEditingUserId(u.id);
+                          setEditFullName(u.full_name);
+                          setEditRole(u.role);
                           setNewPin(u.pin_code);
                         }}
                         className="flex items-center gap-1 font-bold text-blue-600 text-[11px] hover:underline"
                       >
-                        <KeyRound className="h-3 w-3" />
-                        <span>Cambiar PIN</span>
+                        <Edit2 className="h-3 w-3" />
+                        <span>Editar Usuario</span>
                       </button>
                     </div>
                   )}

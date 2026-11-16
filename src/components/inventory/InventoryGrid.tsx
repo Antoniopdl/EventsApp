@@ -6,13 +6,18 @@ import {
   FileSpreadsheet,
   Package,
   PackagePlus,
+  Plus,
   Search,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { InventoryItem } from "@/core/domain/inventory";
+import { useEffect, useMemo, useState } from "react";
+import type { Category, InventoryItem } from "@/core/domain/inventory";
 import type { UserRole } from "@/core/domain/user";
+import { getCategories } from "@/infrastructure/supabase/category-repository";
 import { CategoryFilter } from "./CategoryFilter";
+import { CategoryManagerModal } from "./CategoryManagerModal";
+import { CreateLooseItemModal } from "./CreateLooseItemModal";
 import { CreatePackageModal } from "./CreatePackageModal";
+import { EditProductModal } from "./EditProductModal";
 import { InventoryCard } from "./InventoryCard";
 
 interface InventoryGridProps {
@@ -24,7 +29,8 @@ interface InventoryGridProps {
     updates: Partial<InventoryItem>,
   ) => Promise<void>;
   onUpdateVariantStock: (variantId: string, newStock: number) => Promise<void>;
-  onPackageCreated?: (pkg: InventoryItem) => void;
+  onItemCreated?: (item: InventoryItem) => void;
+  onNotification?: (msg: string) => void;
 }
 
 export function InventoryGrid({
@@ -33,32 +39,46 @@ export function InventoryGrid({
   onAdjustStock,
   onUpdateDetails,
   onUpdateVariantStock,
-  onPackageCreated,
+  onItemCreated,
+  onNotification,
 }: InventoryGridProps) {
   const [viewType, setViewType] = useState<"paquetes" | "individuales">(
     "paquetes",
   );
   const [search, setSearch] = useState("");
+  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("todas");
   const [isEditMode, setIsEditMode] = useState(false);
+
+  // Modales
   const [showCreatePackageModal, setShowCreatePackageModal] = useState(false);
+  const [showCreateLooseModal, setShowCreateLooseModal] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<InventoryItem | null>(
+    null,
+  );
+
+  useEffect(() => {
+    setCategories(getCategories());
+  }, []);
 
   const isAdmin = role === "admin";
 
+  const notify = (msg: string) => {
+    if (onNotification) onNotification(msg);
+  };
+
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
-      // 1. Filtro por Tipo (Paquete vs Individual)
       const isPkg = item.item_type === "paquete";
       if (viewType === "paquetes" && !isPkg) return false;
       if (viewType === "individuales" && isPkg) return false;
 
-      // 2. Filtro por Categoría (solo aplica en individuales)
       const matchCategory =
         viewType === "paquetes" ||
         selectedCategory === "todas" ||
         item.category === selectedCategory;
 
-      // 3. Filtro por Buscador
       const matchSearch =
         item.name.toLowerCase().includes(search.toLowerCase()) ||
         item.sku.toLowerCase().includes(search.toLowerCase());
@@ -69,7 +89,7 @@ export function InventoryGrid({
 
   return (
     <div className="space-y-3 pb-6">
-      {/* Selector de Vista: Paquetes (Default) vs Artículos Sueltos */}
+      {/* Selector de Vista: Paquetes vs Artículos Sueltos */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-1 rounded-2xl border border-slate-200 bg-slate-100 p-1">
           <button
@@ -101,7 +121,7 @@ export function InventoryGrid({
         {/* Acciones de Administrador */}
         {isAdmin && (
           <div className="flex items-center gap-1.5">
-            {viewType === "paquetes" && (
+            {viewType === "paquetes" ? (
               <button
                 type="button"
                 onClick={() => setShowCreatePackageModal(true)}
@@ -110,6 +130,16 @@ export function InventoryGrid({
               >
                 <PackagePlus className="h-4 w-4" />
                 <span className="hidden sm:inline">Nuevo</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowCreateLooseModal(true)}
+                title="Crear Nuevo Artículo Suelto"
+                className="flex h-11 items-center gap-1 rounded-2xl bg-blue-600 px-3 font-bold text-xs text-white shadow-xs transition-all hover:bg-blue-700 active:scale-95"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Artículo</span>
               </button>
             )}
 
@@ -148,20 +178,20 @@ export function InventoryGrid({
       {isEditMode && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 font-medium flex items-center justify-between animate-in fade-in">
           <span>
-            ✏️ <strong>Modo Edición:</strong> Modifica cualquier precio o stock;
-            se guarda al instante.
+            ✏️ <strong>Modo Edición:</strong> Edita rápido o toca &quot;Editar
+            Ficha Completa&quot; para cambiar todo.
           </span>
           <button
             type="button"
             onClick={() => setIsEditMode(false)}
-            className="font-bold underline text-amber-900 ml-2"
+            className="font-bold text-amber-900 underline ml-2 shrink-0"
           >
-            Cerrar
+            Listo
           </button>
         </div>
       )}
 
-      {/* Barra de Búsqueda */}
+      {/* Buscador */}
       <div className="relative">
         <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
@@ -170,47 +200,93 @@ export function InventoryGrid({
           onChange={(e) => setSearch(e.target.value)}
           placeholder={
             viewType === "paquetes"
-              ? "Buscar paquete (ej. Redondo, Tiffany, Tablón)..."
-              : "Buscar mesa, silla, mantel por tela o color..."
+              ? "Buscar paquetes (ej. Mesa Redonda, Tiffany)..."
+              : "Buscar sillas, mesas, manteles, sobremanteles..."
           }
-          className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pr-3 pl-9 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pr-4 pl-9 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
         />
       </div>
 
-      {/* Categorías (Solo cuando vemos artículos sueltos) */}
+      {/* Filtro de Categorías Dinámico */}
       {viewType === "individuales" && (
         <CategoryFilter
+          categories={categories}
           selectedCategory={selectedCategory}
           onSelectCategory={setSelectedCategory}
+          isAdmin={isAdmin}
+          onOpenManager={() => setShowCategoryManager(true)}
         />
       )}
 
-      {/* Rejilla de Artículos */}
-      <div className="grid grid-cols-2 gap-3">
-        {filteredItems.map((item) => (
-          <InventoryCard
-            key={item.id}
-            item={item}
-            role={role}
-            isEditMode={isEditMode}
-            onAdjustStock={onAdjustStock}
-            onUpdateDetails={onUpdateDetails}
-            onUpdateVariantStock={onUpdateVariantStock}
-          />
-        ))}
-      </div>
+      {/* Grid de Tarjetas */}
+      {filteredItems.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 py-10 text-center">
+          <p className="font-medium text-slate-500 text-xs">
+            No se encontraron artículos en esta sección
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {filteredItems.map((item) => (
+            <InventoryCard
+              key={item.id}
+              item={item}
+              role={role}
+              isEditMode={isEditMode}
+              onAdjustStock={onAdjustStock}
+              onUpdateDetails={onUpdateDetails}
+              onUpdateVariantStock={onUpdateVariantStock}
+              onOpenFullEdit={(it) => setEditingProduct(it)}
+            />
+          ))}
+        </div>
+      )}
 
-      {/* Modal para Crear Nuevo Paquete */}
+      {/* Modal Creador de Paquetes */}
       {showCreatePackageModal && (
         <CreatePackageModal
           availableItems={items}
           onPackageCreated={(newPkg) => {
-            if (onPackageCreated) {
-              onPackageCreated(newPkg);
-            }
+            if (onItemCreated) onItemCreated(newPkg);
           }}
           onClose={() => setShowCreatePackageModal(false)}
-          onNotification={() => {}}
+          onNotification={notify}
+        />
+      )}
+
+      {/* Modal Creador de Artículos Sueltos */}
+      {showCreateLooseModal && (
+        <CreateLooseItemModal
+          categories={categories}
+          onItemCreated={(newItem) => {
+            if (onItemCreated) onItemCreated(newItem);
+          }}
+          onClose={() => setShowCreateLooseModal(false)}
+          onNotification={notify}
+        />
+      )}
+
+      {/* Modal Gestor de Categorías */}
+      {showCategoryManager && (
+        <CategoryManagerModal
+          categories={categories}
+          onCategoriesUpdated={(updated) => {
+            setCategories(updated);
+          }}
+          onClose={() => setShowCategoryManager(false)}
+          onNotification={notify}
+        />
+      )}
+
+      {/* Modal Edición Completa de Producto / Paquete */}
+      {editingProduct && (
+        <EditProductModal
+          item={editingProduct}
+          allItems={items}
+          categories={categories}
+          onSave={onUpdateDetails}
+          onClose={() => setEditingProduct(null)}
+          onNotification={notify}
         />
       )}
     </div>

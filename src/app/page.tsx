@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Lock } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { EventAgenda } from "@/components/bookings/EventAgenda";
 import { QuoteWizard } from "@/components/bookings/QuoteWizard";
@@ -24,6 +24,7 @@ import {
 } from "@/infrastructure/supabase/inventory-repository";
 
 export default function Home() {
+  const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [role, setRole] = useState<UserRole>("admin");
   const [tab, setTab] = useState<NavTab>("inventory");
@@ -31,7 +32,6 @@ export default function Home() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Modales
-  const [showLoginModal, setShowLoginModal] = useState(false);
   const [showUserSettingsModal, setShowUserSettingsModal] = useState(false);
 
   // Cliente preseleccionado para cotizar
@@ -40,28 +40,33 @@ export default function Home() {
 
   const showNotification = useCallback((msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
+    setTimeout(() => setToastMessage(null), 2800);
   }, []);
 
-  // Verificar sesión persistida
+  // Verificar sesión persistida (bloqueo estricto si no hay sesión)
   useEffect(() => {
     const saved = localStorage.getItem("fer_eventos_auth_user");
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as AppUser;
-        setCurrentUser(parsed);
-        setRole(parsed.role);
-        if (parsed.role === "driver") {
-          setTab("logistics");
+        if (parsed?.username && parsed?.role) {
+          setCurrentUser(parsed);
+          setRole(parsed.role);
+          if (parsed.role === "driver") {
+            setTab("logistics");
+          }
         }
       } catch {
-        setShowLoginModal(true);
+        localStorage.removeItem("fer_eventos_auth_user");
       }
     }
+    setIsAuthChecked(true);
   }, []);
 
-  // Carga inicial de inventario y suscripción en tiempo real
+  // Carga inicial de inventario SOLO cuando el usuario ya está autenticado
   useEffect(() => {
+    if (!currentUser) return;
+
     getInventoryItems().then((loadedItems) => {
       if (loadedItems && loadedItems.length > 0) {
         setItems(loadedItems);
@@ -78,7 +83,7 @@ export default function Home() {
     return () => {
       unsubscribe();
     };
-  }, [showNotification]);
+  }, [currentUser, showNotification]);
 
   const handleAdjustStock = async (id: string, delta: number) => {
     const currentItem = items.find((i) => i.id === id);
@@ -103,7 +108,7 @@ export default function Home() {
     );
     const success = await updateItemDetailsInDb(id, updates);
     if (success) {
-      showNotification("Datos guardados automáticamente");
+      showNotification("Datos guardados correctamente");
     } else {
       showNotification("Error al guardar en el servidor");
     }
@@ -135,6 +140,10 @@ export default function Home() {
   };
 
   const handleRoleChange = (newRole: UserRole) => {
+    if (currentUser?.role !== "admin" && newRole === "admin") {
+      showNotification("Solo Administración puede cambiar a este modo.");
+      return;
+    }
     setRole(newRole);
     if (newRole === "driver") {
       setTab("logistics");
@@ -147,7 +156,6 @@ export default function Home() {
   const handleLogout = () => {
     localStorage.removeItem("fer_eventos_auth_user");
     setCurrentUser(null);
-    setShowLoginModal(true);
   };
 
   const handleStartQuoteFromClient = (
@@ -161,6 +169,40 @@ export default function Home() {
       `Iniciando cotización para ${client.full_name.split(" ")[0]}`,
     );
   };
+
+  // Pantalla de carga inicial mientras se verifica la sesión
+  if (!isAuthChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-900 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <Lock className="h-8 w-8 text-blue-400 animate-pulse" />
+          <p className="text-xs font-semibold text-slate-300">
+            Verificando acceso seguro...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Bloqueo Estricto: si no hay usuario autenticado, NO se muestra ni se carga ningún dato
+  if (!currentUser) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-900">
+        <LoginModal
+          onSuccess={(user) => {
+            setCurrentUser(user);
+            setRole(user.role);
+            if (user.role === "driver") {
+              setTab("logistics");
+            } else {
+              setTab("inventory");
+            }
+            showNotification(`Bienvenido, ${user.full_name.split(" ")[0]}`);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen justify-center bg-slate-100 sm:p-4">
@@ -181,12 +223,11 @@ export default function Home() {
               onAdjustStock={handleAdjustStock}
               onUpdateDetails={handleUpdateDetails}
               onUpdateVariantStock={handleUpdateVariantStock}
-              onPackageCreated={(newPkg) => {
-                setItems((prev) => [newPkg, ...prev]);
-                showNotification(
-                  `Paquete ${newPkg.name} agregado al inventario.`,
-                );
+              onItemCreated={(newItem) => {
+                setItems((prev) => [newItem, ...prev]);
+                showNotification(`${newItem.name} agregado al inventario.`);
               }}
+              onNotification={showNotification}
             />
           )}
 
@@ -227,22 +268,6 @@ export default function Home() {
         )}
 
         <BottomNav activeTab={tab} onTabChange={setTab} role={role} />
-
-        {/* Modal de Inicio de Sesión con PIN de 6 Dígitos */}
-        {showLoginModal && (
-          <LoginModal
-            onSuccess={(user) => {
-              setCurrentUser(user);
-              setRole(user.role);
-              setShowLoginModal(false);
-              if (user.role === "driver") {
-                setTab("logistics");
-              }
-              showNotification(`Bienvenido, ${user.full_name.split(" ")[0]}`);
-            }}
-            onClose={currentUser ? () => setShowLoginModal(false) : undefined}
-          />
-        )}
 
         {/* Modal de Configuración de Usuarios y PINs */}
         {showUserSettingsModal && (

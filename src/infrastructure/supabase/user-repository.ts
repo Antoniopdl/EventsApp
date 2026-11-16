@@ -173,6 +173,55 @@ export async function updateUserPin(
 }
 
 /**
+ * Actualiza el nombre completo, rol y PIN de un usuario existente.
+ */
+export async function updateAppUserDetails(
+  userId: string,
+  updates: {
+    full_name: string;
+    role: "admin" | "driver";
+    pin_code: string;
+  },
+): Promise<boolean> {
+  if (updates.pin_code.length !== 6 || !/^\d{6}$/.test(updates.pin_code)) {
+    return false;
+  }
+  const cleanName = updates.full_name.trim();
+  if (!cleanName) return false;
+
+  const current = getLocalUsers();
+  const updated = current.map((u) =>
+    u.id === userId
+      ? {
+          ...u,
+          full_name: cleanName,
+          role: updates.role,
+          pin_code: updates.pin_code,
+        }
+      : u,
+  );
+  saveLocalUsers(updated);
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from("app_users")
+        .update({
+          full_name: cleanName,
+          role: updates.role,
+          pin_code: updates.pin_code,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+    } catch (e) {
+      console.warn("Error actualizando detalles de usuario en Supabase:", e);
+    }
+  }
+
+  return true;
+}
+
+/**
  * Crea un nuevo usuario o chofer con su PIN de 6 dígitos.
  */
 export async function createAppUser(

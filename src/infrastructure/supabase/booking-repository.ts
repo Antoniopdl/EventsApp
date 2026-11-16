@@ -1,4 +1,4 @@
-import type { Booking, PaymentStatus } from "@/core/domain/booking";
+import type { Booking, PaymentStatus, PickupType } from "@/core/domain/booking";
 import { isSupabaseConfigured, supabase } from "./client";
 
 /**
@@ -20,6 +20,7 @@ export async function createBookingInDb(
     end_datetime: string;
     delivery_datetime: string;
     pickup_datetime: string;
+    pickup_type?: PickupType;
     subtotal_furniture: number;
     security_deposit: number;
     advance_payment: number;
@@ -57,7 +58,7 @@ export async function createBookingInDb(
       end_datetime: bookingData.end_datetime,
       delivery_datetime: bookingData.delivery_datetime,
       pickup_datetime: bookingData.pickup_datetime,
-      pickup_type: "mismo_dia_noche",
+      pickup_type: bookingData.pickup_type || "mismo_dia_noche",
       freight_distance_km: bookingData.freight_distance_km,
       freight_cost: bookingData.freight_cost,
       status: "confirmada",
@@ -118,7 +119,7 @@ export async function createBookingInDb(
         end_datetime: bookingData.end_datetime,
         delivery_datetime: bookingData.delivery_datetime,
         pickup_datetime: bookingData.pickup_datetime,
-        pickup_type: "mismo_dia_noche",
+        pickup_type: bookingData.pickup_type || "mismo_dia_noche",
         status: "confirmada",
         subtotal_furniture: bookingData.subtotal_furniture,
         discount_amount: 0,

@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Check, Users } from "lucide-react";
+import { Camera, Check, Edit2, Users } from "lucide-react";
 import { useState } from "react";
 import type { InventoryItem } from "@/core/domain/inventory";
 import type { UserRole } from "@/core/domain/user";
@@ -17,6 +17,7 @@ interface InventoryCardProps {
     updates: Partial<InventoryItem>,
   ) => Promise<void>;
   onUpdateVariantStock: (variantId: string, newStock: number) => Promise<void>;
+  onOpenFullEdit?: (item: InventoryItem) => void;
 }
 
 export function InventoryCard({
@@ -26,6 +27,7 @@ export function InventoryCard({
   onAdjustStock,
   onUpdateDetails,
   onUpdateVariantStock,
+  onOpenFullEdit,
 }: InventoryCardProps) {
   const isAdmin = role === "admin";
   const [nameInput, setNameInput] = useState(item.name);
@@ -236,17 +238,29 @@ export function InventoryCard({
           {isAdmin && (
             <div>
               {isEditMode ? (
-                <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-white p-1">
-                  <span className="text-[10px] font-bold text-slate-500 pl-1">
-                    Stock Total:
-                  </span>
-                  <input
-                    type="number"
-                    value={stockInput}
-                    onChange={(e) => setStockInput(e.target.value)}
-                    onBlur={handleStockBlur}
-                    className="w-16 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-right font-bold text-xs outline-none"
-                  />
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-white p-1">
+                    <span className="text-[10px] font-bold text-slate-500 pl-1">
+                      Stock Total:
+                    </span>
+                    <input
+                      type="number"
+                      value={stockInput}
+                      onChange={(e) => setStockInput(e.target.value)}
+                      onBlur={handleStockBlur}
+                      className="w-16 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-right font-bold text-xs outline-none"
+                    />
+                  </div>
+                  {onOpenFullEdit && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenFullEdit(item)}
+                      className="flex w-full items-center justify-center gap-1 rounded-xl bg-amber-500 py-1.5 text-[10px] font-bold text-white shadow-2xs hover:bg-amber-600 active:scale-95"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                      <span>Editar Ficha Completa</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-1">

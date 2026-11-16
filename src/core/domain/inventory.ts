@@ -1,14 +1,102 @@
-export type FurnitureCategory =
-  | "paquetes"
-  | "sillas"
-  | "mesas"
-  | "manteleria"
-  | "vajilla"
-  | "toldos_carpas"
-  | "decoracion"
-  | "otros";
+export type FurnitureCategory = string;
 
 export type InventoryItemType = "individual" | "paquete";
+
+export interface Category {
+  id: string;
+  slug: string;
+  label: string;
+  icon: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export const DEFAULT_CATEGORIES: Category[] = [
+  {
+    id: "cat-sillas",
+    slug: "sillas",
+    label: "Sillas",
+    icon: "🪑",
+    is_active: true,
+    sort_order: 1,
+  },
+  {
+    id: "cat-mesas",
+    slug: "mesas",
+    label: "Mesas",
+    icon: "🍽️",
+    is_active: true,
+    sort_order: 2,
+  },
+  {
+    id: "cat-manteles-base",
+    slug: "manteles_base",
+    label: "Manteles Base",
+    icon: "🧵",
+    is_active: true,
+    sort_order: 3,
+  },
+  {
+    id: "cat-sobremanteles",
+    slug: "sobremanteles",
+    label: "Sobremanteles",
+    icon: "✨",
+    is_active: true,
+    sort_order: 4,
+  },
+  {
+    id: "cat-vajilla",
+    slug: "vajilla",
+    label: "Vajilla",
+    icon: "🍷",
+    is_active: true,
+    sort_order: 5,
+  },
+  {
+    id: "cat-decoracion",
+    slug: "decoracion",
+    label: "Decoración",
+    icon: "🏺",
+    is_active: true,
+    sort_order: 6,
+  },
+  {
+    id: "cat-toldos",
+    slug: "toldos_carpas",
+    label: "Toldos y Carpas",
+    icon: "⛺",
+    is_active: true,
+    sort_order: 7,
+  },
+  {
+    id: "cat-otros",
+    slug: "otros",
+    label: "Otros",
+    icon: "📦",
+    is_active: true,
+    sort_order: 8,
+  },
+];
+
+export const DEFAULT_FABRICS: string[] = [
+  "Tergal",
+  "Satín",
+  "Encaje",
+  "Bordado",
+  "Jacquard",
+  "Lino",
+  "Organza",
+];
+
+export function isTableclothCategory(categorySlug: string): boolean {
+  const clean = categorySlug.toLowerCase();
+  return (
+    clean === "manteles_base" ||
+    clean === "sobremanteles" ||
+    clean === "manteleria" ||
+    clean.includes("mantel")
+  );
+}
 
 export interface InventoryVariant {
   id: string;

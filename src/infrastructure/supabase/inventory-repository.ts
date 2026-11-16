@@ -1,8 +1,13 @@
-import type { InventoryItem } from "@/core/domain/inventory";
+import type {
+  InventoryItem,
+  InventoryVariant,
+  PackageComponent,
+} from "@/core/domain/inventory";
 import { INITIAL_INVENTORY_SEED } from "@/core/use-cases/inventory";
 import { isSupabaseConfigured, supabase } from "./client";
 
 const CUSTOM_PACKAGES_STORAGE_KEY = "fer_eventos_custom_packages_v1";
+const CUSTOM_LOOSE_ITEMS_STORAGE_KEY = "fer_eventos_custom_loose_items_v1";
 const ITEM_OVERRIDES_STORAGE_KEY = "fer_eventos_inventory_overrides_v1";
 
 function getLocalPackages(): InventoryItem[] {
@@ -23,6 +28,27 @@ function saveLocalPackage(pkg: InventoryItem): void {
   localStorage.setItem(
     CUSTOM_PACKAGES_STORAGE_KEY,
     JSON.stringify([pkg, ...filtered]),
+  );
+}
+
+function getLocalLooseItems(): InventoryItem[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(CUSTOM_LOOSE_ITEMS_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as InventoryItem[];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalLooseItem(item: InventoryItem): void {
+  if (typeof window === "undefined") return;
+  const current = getLocalLooseItems();
+  const filtered = current.filter((i) => i.id !== item.id);
+  localStorage.setItem(
+    CUSTOM_LOOSE_ITEMS_STORAGE_KEY,
+    JSON.stringify([item, ...filtered]),
   );
 }
 
@@ -49,7 +75,7 @@ function saveLocalItemOverride(
 
 /**
  * Obtiene el inventario activo de Supabase con sus variantes de color y componentes de paquetes,
- * combinándolo con paquetes personalizados y ediciones locales.
+ * combinándolo con paquetes/artículos personalizados y ediciones locales.
  */
 export async function getInventoryItems(): Promise<InventoryItem[]> {
   let baseItems: InventoryItem[] = INITIAL_INVENTORY_SEED;
@@ -72,22 +98,34 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
     }
   }
 
-  // 1. Aplicar modificaciones guardadas localmente (nombres, fotos, precios, stocks)
   const overrides = getLocalItemOverrides();
-  const mergedItems = baseItems.map((item) => {
-    const itemOverride = overrides[item.id];
-    return itemOverride ? { ...item, ...itemOverride } : item;
+  const localLoose = getLocalLooseItems();
+  const localPackages = getLocalPackages();
+
+  const mergedBase = baseItems.map((item) => {
+    const ov = overrides[item.id];
+    return ov ? { ...item, ...ov } : item;
   });
 
-  // 2. Unir con los paquetes personalizados creados
-  const localPackages = getLocalPackages();
-  for (const pkg of localPackages) {
-    if (!mergedItems.some((i) => i.id === pkg.id)) {
-      mergedItems.unshift(pkg);
+  const combined = [...mergedBase];
+
+  for (const loose of localLoose) {
+    const ov = overrides[loose.id];
+    const finalLoose = ov ? { ...loose, ...ov } : loose;
+    if (!combined.some((i) => i.id === finalLoose.id)) {
+      combined.unshift(finalLoose);
     }
   }
 
-  return mergedItems;
+  for (const pkg of localPackages) {
+    const ov = overrides[pkg.id];
+    const finalPkg = ov ? { ...pkg, ...ov } : pkg;
+    if (!combined.some((i) => i.id === finalPkg.id)) {
+      combined.unshift(finalPkg);
+    }
+  }
+
+  return combined;
 }
 
 /**
@@ -114,7 +152,7 @@ export async function updateItemStockInDb(
 }
 
 /**
- * Actualiza el stock de una variante de color específica (ej. Sobremantel Azul Rey).
+ * Actualiza el stock de una variante de color específica.
  */
 export async function updateVariantStockInDb(
   variantId: string,
@@ -135,13 +173,12 @@ export async function updateVariantStockInDb(
 }
 
 /**
- * Actualiza datos del producto (nombre, foto, precio o stock) desde el Modo Edición.
+ * Actualiza cualquier campo del producto o paquete desde la ficha completa o edición rápida.
  */
 export async function updateItemDetailsInDb(
   id: string,
   updates: Partial<InventoryItem>,
 ): Promise<boolean> {
-  // 1. Guardar de inmediato en almacenamiento local para actualización instantánea
   saveLocalItemOverride(id, updates);
 
   if (!isSupabaseConfigured || !supabase) return true;
@@ -153,9 +190,16 @@ export async function updateItemDetailsInDb(
     if (updates.name !== undefined) payload.name = updates.name;
     if (updates.rental_price !== undefined)
       payload.rental_price = updates.rental_price;
+    if (updates.replacement_price !== undefined)
+      payload.replacement_price = updates.replacement_price;
     if (updates.total_stock !== undefined)
       payload.total_stock = updates.total_stock;
     if (updates.image_url !== undefined) payload.image_url = updates.image_url;
+    if (updates.fabric !== undefined) payload.fabric = updates.fabric;
+    if (updates.capacity_people !== undefined)
+      payload.capacity_people = updates.capacity_people;
+    if (updates.description !== undefined)
+      payload.description = updates.description;
 
     const { error } = await supabase
       .from("inventory_items")
@@ -167,6 +211,113 @@ export async function updateItemDetailsInDb(
     console.warn("Error guardando detalles en Supabase:", e);
     return true;
   }
+}
+
+/**
+ * Crea un nuevo artículo suelto con soporte opcional de tela y variantes de color.
+ */
+export async function createLooseItemInDb(input: {
+  name: string;
+  category: string;
+  rental_price: number;
+  replacement_price: number;
+  total_stock: number;
+  fabric?: string | null;
+  image_url?: string | null;
+  variants?: Omit<InventoryVariant, "id" | "item_id">[];
+}): Promise<InventoryItem> {
+  const sku = `ART-${Date.now().toString().slice(-6)}`;
+  const itemId = `art-${Date.now()}`;
+
+  const mappedVariants: InventoryVariant[] | undefined =
+    input.variants && input.variants.length > 0
+      ? input.variants.map((v, idx) => ({
+          id: `var-${Date.now()}-${idx}`,
+          item_id: itemId,
+          color_name: v.color_name,
+          color_hex: v.color_hex || "#2563eb",
+          total_stock: v.total_stock,
+        }))
+      : undefined;
+
+  const totalStock =
+    mappedVariants && mappedVariants.length > 0
+      ? mappedVariants.reduce((sum, v) => sum + v.total_stock, 0)
+      : input.total_stock;
+
+  const newItem: InventoryItem = {
+    id: itemId,
+    sku,
+    name: input.name.trim(),
+    category: input.category,
+    item_type: "individual",
+    fabric: input.fabric || null,
+    rental_price: input.rental_price,
+    replacement_price: input.replacement_price,
+    total_stock: totalStock,
+    image_url:
+      input.image_url ||
+      "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=300&q=80",
+    buffer_cleanup_hours: input.fabric ? 48 : 2,
+    is_active: true,
+    variants: mappedVariants,
+  };
+
+  saveLocalLooseItem(newItem);
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const dbCategory = [
+        "sillas",
+        "mesas",
+        "manteleria",
+        "vajilla",
+        "toldos_carpas",
+        "decoracion",
+        "otros",
+      ].includes(input.category)
+        ? input.category
+        : "otros";
+
+      const { data: created, error } = await supabase
+        .from("inventory_items")
+        .insert([
+          {
+            sku,
+            name: newItem.name,
+            category: dbCategory,
+            item_type: "individual",
+            fabric: newItem.fabric,
+            rental_price: newItem.rental_price,
+            replacement_price: newItem.replacement_price,
+            total_stock: newItem.total_stock,
+            image_url: newItem.image_url,
+            is_active: true,
+          },
+        ])
+        .select()
+        .single();
+
+      if (!error && created) {
+        newItem.id = created.id;
+        if (mappedVariants && mappedVariants.length > 0) {
+          await supabase.from("inventory_item_variants").insert(
+            mappedVariants.map((v) => ({
+              item_id: created.id,
+              color_name: v.color_name,
+              color_hex: v.color_hex,
+              total_stock: v.total_stock,
+            })),
+          );
+        }
+        saveLocalLooseItem(newItem);
+      }
+    } catch (e) {
+      console.warn("Error creando artículo suelto en Supabase:", e);
+    }
+  }
+
+  return newItem;
 }
 
 /**
@@ -184,9 +335,18 @@ export async function createPackageInDb(
   components: { component_item_id: string; quantity: number }[],
 ): Promise<InventoryItem | null> {
   const sku = packageData.sku || `PAQ-${Date.now().toString().slice(-6)}`;
+  const pkgId = `pkg-${Date.now()}`;
+
+  const mappedComponents: PackageComponent[] = components.map((c, i) => ({
+    id: `pc-${Date.now()}-${i}`,
+    package_id: pkgId,
+    component_item_id: c.component_item_id,
+    quantity: c.quantity,
+    is_customizable: false,
+  }));
 
   const newPackageItem: InventoryItem = {
-    id: `pkg-${Date.now()}`,
+    id: pkgId,
     sku,
     name: packageData.name.trim(),
     category: "paquetes",
@@ -200,22 +360,13 @@ export async function createPackageInDb(
     image_url:
       packageData.image_url ||
       "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=300&q=80",
-    package_components: components.map((c, i) => ({
-      id: `pc-${Date.now()}-${i}`,
-      package_id: `pkg-${Date.now()}`,
-      component_item_id: c.component_item_id,
-      quantity: c.quantity,
-      is_customizable: false,
-    })),
+    package_components: mappedComponents,
   };
 
-  // 1. Persistir localmente de inmediato
   saveLocalPackage(newPackageItem);
 
-  // 2. Replicar a Supabase si está disponible
   if (isSupabaseConfigured && supabase) {
     try {
-      // Usamos category "otros" para respetar check constraint inicial de Supabase
       const { data: pkg, error: pkgErr } = await supabase
         .from("inventory_items")
         .insert([
@@ -236,7 +387,6 @@ export async function createPackageInDb(
 
       if (!pkgErr && pkg) {
         newPackageItem.id = pkg.id;
-        // Insertar componentes de paquete
         if (components.length > 0) {
           const compRows = components.map((c) => ({
             package_id: pkg.id,
@@ -246,11 +396,6 @@ export async function createPackageInDb(
           await supabase.from("package_items").insert(compRows);
         }
         saveLocalPackage(newPackageItem);
-      } else {
-        console.warn(
-          "Supabase insert package warning, using local package:",
-          pkgErr,
-        );
       }
     } catch (e) {
       console.warn("Error creando paquete en Supabase:", e);

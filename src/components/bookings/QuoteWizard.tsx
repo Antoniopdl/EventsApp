@@ -1,22 +1,30 @@
 "use client";
 
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Boxes,
+  CalendarClock,
   CheckCircle2,
   Home,
   MapPin,
   MessageCircle,
   Package,
   Search,
+  Sparkles,
   User,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { Booking, PickupType } from "@/core/domain/booking";
 import type { ClientAddress, ClientWithStats } from "@/core/domain/client";
 import type { InventoryItem } from "@/core/domain/inventory";
 import { FER_EVENTOS_CONFIG } from "@/core/domain/user";
-import { createBookingInDb } from "@/infrastructure/supabase/booking-repository";
+import { checkInventoryAvailability } from "@/core/use-cases/CheckInventoryAvailability";
+import {
+  createBookingInDb,
+  getBookings,
+} from "@/infrastructure/supabase/booking-repository";
 import { searchClients } from "@/infrastructure/supabase/client-repository";
 import { formatCurrency } from "@/lib/utils";
 import { AddressPickerMap } from "../shared/AddressPickerMap";
@@ -66,9 +74,14 @@ export function QuoteWizard({
   const [freightCost, setFreightCost] = useState(250);
   const [showMapModal, setShowMapModal] = useState(false);
 
-  // Fecha y artículos
+  // Fecha, recolección y artículos
   const [deliveryDate, setDeliveryDate] = useState("2026-11-14");
   const [deliveryTime, setDeliveryTime] = useState("11:00");
+  const [pickupMode, setPickupMode] = useState<
+    "mismo_dia_noche" | "dia_siguiente" | "dos_dias" | "personalizado"
+  >("dia_siguiente");
+  const [customPickupDate, setCustomPickupDate] = useState("2026-11-16");
+  const [existingBookings, setExistingBookings] = useState<Booking[]>([]);
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>(
     {},
   );
@@ -88,6 +101,10 @@ export function QuoteWizard({
   const [confirmedBookingFolio, setConfirmedBookingFolio] = useState<
     string | null
   >(null);
+
+  useEffect(() => {
+    getBookings().then(setExistingBookings);
+  }, []);
 
   useEffect(() => {
     if (initialClient) {
@@ -188,11 +205,83 @@ export function QuoteWizard({
     return { pkgs, pieces };
   }, [selectedItems, inventory]);
 
+  // Calcular fecha/hora de recolección y duración
+  const { pickupIso, pickupType, rentalDaysCount } = useMemo(() => {
+    const base = new Date(`${deliveryDate}T${deliveryTime || "11:00"}:00`);
+    if (Number.isNaN(base.getTime())) {
+      return {
+        pickupIso: `${deliveryDate}T23:59:00Z`,
+        pickupType: "dia_siguiente" as PickupType,
+        rentalDaysCount: 1,
+      };
+    }
+
+    if (pickupMode === "mismo_dia_noche") {
+      return {
+        pickupIso: `${deliveryDate}T23:30:00Z`,
+        pickupType: "mismo_dia_noche" as PickupType,
+        rentalDaysCount: 1,
+      };
+    }
+    if (pickupMode === "dia_siguiente") {
+      const next = new Date(base);
+      next.setDate(next.getDate() + 1);
+      const isoDate = next.toISOString().split("T")[0];
+      return {
+        pickupIso: `${isoDate}T11:00:00Z`,
+        pickupType: "dia_siguiente" as PickupType,
+        rentalDaysCount: 1,
+      };
+    }
+    if (pickupMode === "dos_dias") {
+      const next = new Date(base);
+      next.setDate(next.getDate() + 2);
+      const isoDate = next.toISOString().split("T")[0];
+      return {
+        pickupIso: `${isoDate}T11:00:00Z`,
+        pickupType: "evento_multidia" as PickupType,
+        rentalDaysCount: 2,
+      };
+    }
+
+    // Personalizado
+    const custom = new Date(`${customPickupDate}T11:00:00Z`);
+    const diffDays = Math.max(
+      1,
+      Math.ceil((custom.getTime() - base.getTime()) / (1000 * 60 * 60 * 24)),
+    );
+    return {
+      pickupIso: `${customPickupDate}T11:00:00Z`,
+      pickupType: (diffDays > 1
+        ? "evento_multidia"
+        : "dia_siguiente") as PickupType,
+      rentalDaysCount: diffDays,
+    };
+  }, [deliveryDate, deliveryTime, pickupMode, customPickupDate]);
+
+  // Motor de disponibilidad en vivo (BOM de paquetes + buffer de 2 días de lavado en manteles)
+  const availabilityReport = useMemo(() => {
+    return checkInventoryAvailability({
+      deliveryIso: `${deliveryDate}T${deliveryTime || "11:00"}:00Z`,
+      pickupIso,
+      selectedItems,
+      inventory,
+      existingBookings,
+    });
+  }, [
+    deliveryDate,
+    deliveryTime,
+    pickupIso,
+    selectedItems,
+    inventory,
+    existingBookings,
+  ]);
+
   // Confirmar reserva en Supabase
   const handleConfirmRental = async () => {
     setIsSubmitting(true);
     const startDatetime = `${deliveryDate}T${deliveryTime}:00Z`;
-    const endDatetime = `${deliveryDate}T23:59:00Z`;
+    const endDatetime = pickupIso;
 
     const bookingItems = Object.entries(selectedItems)
       .map(([id, qty]) => {
@@ -226,6 +315,7 @@ export function QuoteWizard({
         end_datetime: endDatetime,
         delivery_datetime: startDatetime,
         pickup_datetime: endDatetime,
+        pickup_type: pickupType,
         subtotal_furniture: subtotal,
         security_deposit: deposit,
         advance_payment: advancePayment,
@@ -465,6 +555,76 @@ export function QuoteWizard({
             </div>
           </div>
 
+          {/* Selector de cuándo se recoge el mobiliario */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 font-bold text-slate-950 text-xs">
+                <CalendarClock className="h-4 w-4 text-blue-600" />
+                <span>¿Cuándo se recoge el mobiliario?</span>
+              </span>
+              <span className="rounded-lg bg-blue-100 px-2 py-0.5 font-extrabold text-[11px] text-blue-800">
+                {rentalDaysCount} {rentalDaysCount === 1 ? "día" : "días"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: "mismo_dia_noche", label: "Mismo día noche" },
+                { id: "dia_siguiente", label: "Al día siguiente" },
+                { id: "dos_dias", label: "En 2 días" },
+                { id: "personalizado", label: "Otra fecha" },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() =>
+                    setPickupMode(
+                      opt.id as
+                        | "mismo_dia_noche"
+                        | "dia_siguiente"
+                        | "dos_dias"
+                        | "personalizado",
+                    )
+                  }
+                  className={`min-h-[44px] rounded-xl border px-2.5 py-2 text-xs font-bold transition-all active:scale-95 ${
+                    pickupMode === opt.id
+                      ? "border-blue-600 bg-blue-600 text-white shadow-xs"
+                      : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {pickupMode === "personalizado" && (
+              <div className="pt-1">
+                <label
+                  htmlFor="wizard-custom-pickup"
+                  className="mb-1 block font-bold text-slate-900 text-[11px]"
+                >
+                  Fecha de Recolección:
+                </label>
+                <input
+                  id="wizard-custom-pickup"
+                  type="date"
+                  min={deliveryDate}
+                  value={customPickupDate}
+                  onChange={(e) => setCustomPickupDate(e.target.value)}
+                  className="w-full min-h-[44px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+
+            <p className="text-[11px] font-medium text-slate-600">
+              Recolección programada:{" "}
+              <span className="font-bold text-slate-900">
+                {pickupIso.split("T")[0]}
+              </span>{" "}
+              (manteles suman +2 días de lavado).
+            </p>
+          </div>
+
           <button
             type="button"
             onClick={() => setStep(2)}
@@ -535,11 +695,99 @@ export function QuoteWizard({
             </div>
           )}
 
+          {/* Banner de Alerta TDA de Alto Contraste por Faltantes / Lavandería */}
+          {!availabilityReport.isAvailable && (
+            <div className="rounded-2xl border-4 border-amber-300 bg-rose-600 p-3.5 text-white shadow-xl space-y-2.5 animate-in fade-in">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-6 w-6 shrink-0 text-amber-300 mt-0.5" />
+                <div>
+                  <h4 className="font-black text-sm tracking-tight uppercase text-amber-200">
+                    ¡Atención! Falta inventario para esta fecha
+                  </h4>
+                  <p className="text-[11px] font-semibold text-rose-100">
+                    Revisa los faltantes abajo. Puedes cambiar por una
+                    alternativa disponible o continuar si consigues stock extra.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {availabilityReport.missingItems.map((m) => (
+                  <div
+                    key={m.item.id}
+                    className="rounded-xl bg-rose-800/80 border border-rose-400/50 p-2.5 space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-extrabold text-white">
+                        {m.item.name}
+                      </span>
+                      <span className="rounded-lg bg-amber-300 px-2 py-0.5 font-black text-rose-950 text-[11px]">
+                        Faltan {m.missing}
+                      </span>
+                    </div>
+                    <p className="text-[11px] font-medium text-rose-100">
+                      Pides <b>{m.requested}</b>, pero solo hay{" "}
+                      <b>{m.available}</b> libres para estas fechas.
+                    </p>
+                    {m.inLaundryCount > 0 && (
+                      <div className="inline-flex items-center gap-1 rounded-lg bg-amber-400/20 border border-amber-300/60 px-2 py-0.5 text-[11px] font-bold text-amber-200">
+                        <span>
+                          🧺 {m.inLaundryCount} en lavandería (+2 días de
+                          lavado)
+                        </span>
+                      </div>
+                    )}
+
+                    {m.alternatives.length > 0 && (
+                      <div className="pt-1 space-y-1">
+                        <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-amber-200">
+                          <Sparkles className="h-3 w-3" />
+                          <span>
+                            Opciones disponibles de la misma categoría:
+                          </span>
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {m.alternatives.map((alt) => (
+                            <button
+                              key={alt.item.id}
+                              type="button"
+                              onClick={() => {
+                                const addQty = Math.min(
+                                  m.missing,
+                                  alt.availableStock,
+                                );
+                                setItemExactQty(
+                                  alt.item.id,
+                                  (selectedItems[alt.item.id] || 0) + addQty,
+                                );
+                                onNotification?.(
+                                  `Agregadas ${addQty} pzas. de ${alt.item.name}`,
+                                );
+                              }}
+                              className="min-h-[36px] rounded-xl bg-white px-2.5 py-1 text-[11px] font-extrabold text-rose-900 shadow-xs hover:bg-amber-100 active:scale-95"
+                            >
+                              + Usar {alt.item.name} ({alt.availableStock}{" "}
+                              libres)
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Lista de Mobiliario con Selector Unitario */}
           <div className="max-h-[340px] space-y-2 overflow-y-auto pr-1 no-scrollbar">
             {filteredMobiliario.map((item) => {
               const qty = selectedItems[item.id] || 0;
               const isPkg = item.item_type === "paquete";
+              const freeStock = !isPkg
+                ? (availabilityReport.availableByItemId[item.id] ??
+                  item.total_stock)
+                : null;
 
               return (
                 <div
@@ -547,9 +795,24 @@ export function QuoteWizard({
                   className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-2.5"
                 >
                   <div className="flex-1 pr-2">
-                    <p className="font-bold text-slate-900 text-xs line-clamp-1">
-                      {item.name}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-bold text-slate-900 text-xs line-clamp-1">
+                        {item.name}
+                      </p>
+                      {freeStock !== null && (
+                        <span
+                          className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-extrabold ${
+                            freeStock <= 0
+                              ? "bg-rose-100 text-rose-700"
+                              : freeStock < 10
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-emerald-100 text-emerald-800"
+                          }`}
+                        >
+                          {freeStock} libres
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] text-slate-600 font-medium">
                       {formatCurrency(item.rental_price)} c/u
                       {isPkg && item.capacity_people
