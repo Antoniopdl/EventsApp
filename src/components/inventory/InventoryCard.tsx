@@ -82,8 +82,8 @@ export function InventoryCard({
             : "border-slate-200 bg-white shadow-xs hover:shadow-md"
         }`}
       >
-        {/* Imagen & Badges */}
-        <div className="relative h-28 bg-slate-100 group">
+        {/* Imagen & Badges (Cuadrada 1:1) */}
+        <div className="relative aspect-square w-full bg-slate-100 group">
           {item.image_url ? (
             /* biome-ignore lint/performance/noImgElement: Soporte de imagen remota */
             <img

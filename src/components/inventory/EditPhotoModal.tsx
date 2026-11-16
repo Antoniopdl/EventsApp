@@ -79,12 +79,34 @@ export function EditPhotoModal({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Convertir a base64 para previsualización inmediata y guardado
     const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === "string") {
-        setPhotoUrl(reader.result);
-      }
+    reader.onload = () => {
+      if (typeof reader.result !== "string") return;
+      const img = new window.Image();
+      img.onload = () => {
+        const maxSide = 640;
+        let { width, height } = img;
+        if (width > maxSide || height > maxSide) {
+          if (width > height) {
+            height = Math.round((height * maxSide) / width);
+            width = maxSide;
+          } else {
+            width = Math.round((width * maxSide) / height);
+            height = maxSide;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          setPhotoUrl(canvas.toDataURL("image/jpeg", 0.8));
+        } else {
+          setPhotoUrl(reader.result as string);
+        }
+      };
+      img.src = reader.result;
     };
     reader.readAsDataURL(file);
   };
