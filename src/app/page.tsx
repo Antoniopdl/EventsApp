@@ -17,6 +17,7 @@ import type { AppUser, UserRole } from "@/core/domain/user";
 import { INITIAL_INVENTORY_SEED } from "@/core/use-cases/inventory";
 import {
   getInventoryItems,
+  getLastSupabaseError,
   subscribeToInventoryRealtime,
   updateItemDetailsInDb,
   updateItemStockInDb,
@@ -110,7 +111,12 @@ export default function Home() {
     if (success) {
       showNotification("Datos guardados correctamente");
     } else {
-      showNotification("Error al guardar en el servidor");
+      const detail = getLastSupabaseError();
+      showNotification(
+        detail
+          ? `Error servidor: ${detail}`
+          : "Error al guardar en el servidor",
+      );
     }
   };
 

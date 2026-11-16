@@ -232,6 +232,12 @@ async function seedInitialInventoryToSupabase(): Promise<
   }
 }
 
+let lastSupabaseError: string | null = null;
+
+export function getLastSupabaseError(): string | null {
+  return lastSupabaseError;
+}
+
 /**
  * Obtiene el inventario activo de Supabase con sus variantes de color y componentes de paquetes.
  * Si Supabase está conectado, Supabase es la fuente de verdad compartida entre dispositivos.
@@ -248,6 +254,7 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
         .order("name", { ascending: true });
 
       if (!error && data) {
+        lastSupabaseError = null;
         if (data.length > 0) {
           return data as InventoryItem[];
         }
@@ -255,8 +262,22 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
         if (seeded && seeded.length > 0) {
           return seeded;
         }
+      } else if (error) {
+        lastSupabaseError = error.message;
+        // Respaldo: intentar consulta simple sin joins por si falta la migración 00003
+        const { data: simpleData, error: simpleErr } = await supabase
+          .from("inventory_items")
+          .select("*")
+          .eq("is_active", true)
+          .order("name", { ascending: true });
+        if (!simpleErr && simpleData && simpleData.length > 0) {
+          lastSupabaseError = null;
+          return simpleData as InventoryItem[];
+        }
       }
     } catch (e) {
+      lastSupabaseError =
+        e instanceof Error ? e.message : "Error de red con Supabase";
       console.warn("Error consultando inventario en Supabase:", e);
     }
   }
@@ -359,15 +380,20 @@ export async function updateItemDetailsInDb(
         .eq("id", id);
 
       if (error) {
+        lastSupabaseError = error.message;
         console.error("Error actualizando en Supabase:", error);
         return false;
       }
+      lastSupabaseError = null;
       return true;
     }
 
     // Si el ID es local/semilla (ej. "seed-1"), hacemos upsert por SKU para sincronizarlo a Supabase
     const fallback = findFallbackItemById(id);
-    if (!fallback) return false;
+    if (!fallback) {
+      lastSupabaseError = `Artículo ${id} no encontrado para sincronizar`;
+      return false;
+    }
 
     const merged = { ...fallback, ...updates };
     const { error: upsertErr } = await supabase.from("inventory_items").upsert(
@@ -392,11 +418,15 @@ export async function updateItemDetailsInDb(
     );
 
     if (upsertErr) {
+      lastSupabaseError = upsertErr.message;
       console.error("Error en upsert por SKU en Supabase:", upsertErr);
       return false;
     }
+    lastSupabaseError = null;
     return true;
   } catch (e) {
+    lastSupabaseError =
+      e instanceof Error ? e.message : "Error inesperado con Supabase";
     console.warn("Error guardando detalles en Supabase:", e);
     return false;
   }
