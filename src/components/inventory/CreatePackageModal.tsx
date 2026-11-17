@@ -51,7 +51,7 @@ export function CreatePackageModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Detectar items base de mantelería de referencia
-  const baseMantelItem = useMemo(() => {
+  const baseMantelItem = useMemo((): InventoryItem => {
     return (
       availableItems.find(
         (i) =>
@@ -60,14 +60,19 @@ export function CreatePackageModal({
       ) ||
       availableItems.find((i) => i.category === "manteleria") || {
         id: "item-5",
+        sku: "MANT-BASE-SLOT",
         name: "Mantel Base",
         category: "manteles_base",
         total_stock: 45,
+        rental_price: 45,
+        replacement_price: 240,
+        buffer_cleanup_hours: 48,
+        is_active: true,
       }
     );
   }, [availableItems]);
 
-  const baseSobremantelItem = useMemo(() => {
+  const baseSobremantelItem = useMemo((): InventoryItem => {
     return (
       availableItems.find(
         (i) =>
@@ -75,9 +80,14 @@ export function CreatePackageModal({
           i.name.toLowerCase().includes("sobremantel"),
       ) || {
         id: "item-8",
+        sku: "SOBR-SLOT",
         name: "Sobremantel",
         category: "sobremanteles",
         total_stock: 50,
+        rental_price: 30,
+        replacement_price: 160,
+        buffer_cleanup_hours: 48,
+        is_active: true,
       }
     );
   }, [availableItems]);
@@ -258,10 +268,12 @@ export function CreatePackageModal({
       quantity: number;
       is_customizable?: boolean;
       customization_type?: string | null;
+      component_item?: InventoryItem;
     }[] = Object.entries(selectedComponents).map(([itemId, qty]) => ({
       component_item_id: itemId,
       quantity: qty,
       is_customizable: false,
+      component_item: availableItems.find((i) => i.id === itemId),
     }));
 
     if (mantelBaseQty > 0) {
@@ -270,6 +282,7 @@ export function CreatePackageModal({
         quantity: mantelBaseQty,
         is_customizable: true,
         customization_type: "mantel_base",
+        component_item: baseMantelItem,
       });
     }
 
@@ -279,6 +292,7 @@ export function CreatePackageModal({
         quantity: sobremantelQty,
         is_customizable: true,
         customization_type: "sobremantel",
+        component_item: baseSobremantelItem,
       });
     }
 

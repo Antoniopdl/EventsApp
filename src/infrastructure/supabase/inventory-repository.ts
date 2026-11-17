@@ -261,7 +261,7 @@ async function seedInitialInventoryToSupabase(): Promise<
     const { data: fresh } = await supabase
       .from("inventory_items")
       .select(
-        "*, variants:inventory_item_variants(*), package_components:package_items(*, component_item:inventory_items(*))",
+        "*, variants:inventory_item_variants(*), package_components:package_items!package_items_package_id_fkey(*, component_item:inventory_items!package_items_component_item_id_fkey(*))",
       )
       .eq("is_active", true)
       .order("name", { ascending: true });
@@ -289,7 +289,7 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
       const { data, error } = await supabase
         .from("inventory_items")
         .select(
-          "*, variants:inventory_item_variants(*), package_components:package_items(*, component_item:inventory_items(*))",
+          "*, variants:inventory_item_variants(*), package_components:package_items!package_items_package_id_fkey(*, component_item:inventory_items!package_items_component_item_id_fkey(*))",
         )
         .eq("is_active", true)
         .order("name", { ascending: true });
@@ -303,11 +303,12 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
           const mapped = (data as InventoryItem[]).map((item) => {
             const ov = overrides[item.id];
             const localPkg = localPkgMap.get(item.id);
-            const resolvedCat = ov?.category || normalizeCategoryFromDb(item);
+            const rawCat = ov?.category || normalizeCategoryFromDb(item);
             const isPkg =
-              resolvedCat === "paquetes" ||
+              rawCat === "paquetes" ||
               item.item_type === "paquete" ||
               (item.sku?.startsWith("PAQ-") ?? false);
+            const resolvedCat = isPkg ? "paquetes" : rawCat;
             return {
               ...item,
               ...ov,
@@ -316,7 +317,9 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
               package_components:
                 item.package_components && item.package_components.length > 0
                   ? item.package_components
-                  : localPkg?.package_components || item.package_components,
+                  : ov?.package_components ||
+                    localPkg?.package_components ||
+                    item.package_components,
             };
           });
           return mapped;
@@ -341,18 +344,21 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
           const mapped = (simpleData as InventoryItem[]).map((item) => {
             const ov = overrides[item.id];
             const localPkg = localPkgMap.get(item.id);
-            const resolvedCat = ov?.category || normalizeCategoryFromDb(item);
+            const rawCat = ov?.category || normalizeCategoryFromDb(item);
             const isPkg =
-              resolvedCat === "paquetes" ||
+              rawCat === "paquetes" ||
               item.item_type === "paquete" ||
               (item.sku?.startsWith("PAQ-") ?? false);
+            const resolvedCat = isPkg ? "paquetes" : rawCat;
             return {
               ...item,
               ...ov,
               category: resolvedCat,
               item_type: isPkg ? "paquete" : item.item_type || "individual",
               package_components:
-                localPkg?.package_components || item.package_components,
+                ov?.package_components ||
+                localPkg?.package_components ||
+                item.package_components,
             };
           });
           return mapped;
@@ -747,13 +753,15 @@ export async function createPackageInDb(
     quantity: number;
     is_customizable?: boolean;
     customization_type?: string | null;
+    component_item?: InventoryItem;
   }[],
 ): Promise<InventoryItem | null> {
   const sku = packageData.sku || `PAQ-${Date.now().toString().slice(-6)}`;
   const pkgId = `pkg-${Date.now()}`;
 
   const mappedComponents: PackageComponent[] = components.map((c, i) => {
-    let compItem = findFallbackItemById(c.component_item_id);
+    let compItem =
+      c.component_item || findFallbackItemById(c.component_item_id);
     if (!compItem && c.customization_type === "mantel_base") {
       compItem = {
         id: c.component_item_id,

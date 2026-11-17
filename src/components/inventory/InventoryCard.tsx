@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { InventoryItem } from "@/core/domain/inventory";
 import type { UserRole } from "@/core/domain/user";
 import { formatCurrency } from "@/lib/utils";
+import { getPackagePills } from "../desktop/DesktopInventoryManager";
 import { EditPhotoModal } from "./EditPhotoModal";
 
 interface InventoryCardProps {
@@ -190,31 +191,26 @@ export function InventoryCard({
 
             {isPackage && !isEditMode && (
               <div className="space-y-1 mt-1">
-                {item.package_components &&
-                item.package_components.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {item.package_components.map((comp) => {
-                      const label =
-                        comp.customization_type === "mantel_base"
-                          ? "Mantel Base"
-                          : comp.customization_type === "sobremantel"
-                            ? "Sobremantel"
-                            : comp.component_item?.name || "Pieza";
-                      return (
+                {(() => {
+                  const pills = getPackagePills(item, []);
+                  if (pills.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1">
+                      {pills.map((pill) => (
                         <span
-                          key={comp.id || comp.component_item_id}
-                          className="inline-flex items-center rounded-md bg-purple-50 text-purple-900 border border-purple-200 px-1.5 py-0.5 text-[9px] font-bold"
+                          key={pill.key}
+                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
+                            pill.isTablecloth
+                              ? "bg-purple-100 text-purple-900 border border-purple-200"
+                              : "bg-blue-50 text-blue-900 border border-blue-200"
+                          }`}
                         >
-                          {comp.quantity}x {label}
+                          {pill.label}
                         </span>
-                      );
-                    })}
-                  </div>
-                ) : item.description ? (
-                  <p className="text-[10px] text-slate-500 line-clamp-2">
-                    {item.description}
-                  </p>
-                ) : null}
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

@@ -68,7 +68,13 @@ export function EditProductModal({
         c.customization_type === "mantel_base" ||
         c.component_item?.category === "manteles_base",
     );
-    return found ? found.quantity : 0;
+    if (found) return found.quantity;
+    if (item.description) {
+      const match = item.description.match(/(\d+)\s*x?\s*mantel\s*base/i);
+      if (match) return Number.parseInt(match[1], 10);
+      if (item.description.toLowerCase().includes("mantel base")) return 1;
+    }
+    return 0;
   });
 
   const [sobremantelQty, setSobremantelQty] = useState<number>(() => {
@@ -77,7 +83,13 @@ export function EditProductModal({
         c.customization_type === "sobremantel" ||
         c.component_item?.category === "sobremanteles",
     );
-    return found ? found.quantity : 0;
+    if (found) return found.quantity;
+    if (item.description) {
+      const match = item.description.match(/(\d+)\s*x?\s*sobremantel/i);
+      if (match) return Number.parseInt(match[1], 10);
+      if (item.description.toLowerCase().includes("sobremantel")) return 1;
+    }
+    return 0;
   });
 
   const [pkgActiveCategory, setPkgActiveCategory] = useState<string>("todas");
@@ -86,14 +98,36 @@ export function EditProductModal({
   const [pkgQuantities, setPkgQuantities] = useState<Record<string, number>>(
     () => {
       const map: Record<string, number> = {};
-      for (const comp of item.package_components || []) {
-        if (
-          comp.customization_type === "mantel_base" ||
-          comp.customization_type === "sobremantel"
-        ) {
-          continue;
+      if (item.package_components && item.package_components.length > 0) {
+        for (const comp of item.package_components) {
+          if (
+            comp.customization_type === "mantel_base" ||
+            comp.customization_type === "sobremantel"
+          ) {
+            continue;
+          }
+          map[comp.component_item_id] = comp.quantity;
         }
-        map[comp.component_item_id] = comp.quantity;
+      } else if (item.description) {
+        const parts = item.description.split(/\s*\+\s*|\s*,\s*/);
+        for (const part of parts) {
+          const match = part.match(/(\d+)\s*x?\s*(.+)/i);
+          if (match) {
+            const qty = Number.parseInt(match[1], 10);
+            const rawName = match[2].trim().toLowerCase();
+            if (rawName.includes("mantel") || rawName.includes("sobremantel"))
+              continue;
+            const foundItem = allItems.find(
+              (i) =>
+                i.item_type !== "paquete" &&
+                (i.name.toLowerCase().includes(rawName) ||
+                  rawName.includes(i.name.toLowerCase())),
+            );
+            if (foundItem) {
+              map[foundItem.id] = qty;
+            }
+          }
+        }
       }
       return map;
     },
@@ -326,49 +360,98 @@ export function EditProductModal({
 
     const updatedComponents: PackageComponent[] | undefined = isPackage
       ? [
-          ...Object.entries(pkgQuantities).map(([compId, qty], idx) => ({
-            id: `pc-${Date.now()}-${idx}`,
-            package_id: item.id,
-            component_item_id: compId,
-            quantity: qty,
-            is_customizable: false,
-          })),
+          ...Object.entries(pkgQuantities).map(([compId, qty], idx) => {
+            const compItem = allItems.find((i) => i.id === compId);
+            return {
+              id: `pc-${Date.now()}-${idx}`,
+              package_id: item.id,
+              component_item_id: compId,
+              quantity: qty,
+              is_customizable: false,
+              component_item: compItem,
+            };
+          }),
           ...(mantelBaseQty > 0
             ? [
-                {
-                  id: `pc-${Date.now()}-mb`,
-                  package_id: item.id,
-                  component_item_id:
-                    allItems.find(
-                      (i) =>
-                        i.category === "manteles_base" ||
-                        i.name.toLowerCase().includes("mantel base"),
-                    )?.id || "item-5",
-                  quantity: mantelBaseQty,
-                  is_customizable: true,
-                  customization_type: "mantel_base",
-                },
+                (() => {
+                  const baseItem = allItems.find(
+                    (i) =>
+                      i.category === "manteles_base" ||
+                      i.name.toLowerCase().includes("mantel base") ||
+                      i.name.toLowerCase().includes("mantel"),
+                  );
+                  return {
+                    id: `pc-${Date.now()}-mb`,
+                    package_id: item.id,
+                    component_item_id: baseItem?.id || "item-5",
+                    quantity: mantelBaseQty,
+                    is_customizable: true,
+                    customization_type: "mantel_base",
+                    component_item: baseItem || {
+                      id: "mantel-base-slot",
+                      sku: "MANT-BASE-SLOT",
+                      name: "Mantel Base",
+                      category: "manteles_base",
+                      total_stock: 50,
+                      rental_price: 45,
+                      replacement_price: 240,
+                      buffer_cleanup_hours: 48,
+                      is_active: true,
+                    },
+                  };
+                })(),
               ]
             : []),
           ...(sobremantelQty > 0
             ? [
-                {
-                  id: `pc-${Date.now()}-sm`,
-                  package_id: item.id,
-                  component_item_id:
-                    allItems.find(
-                      (i) =>
-                        i.category === "sobremanteles" ||
-                        i.name.toLowerCase().includes("sobremantel"),
-                    )?.id || "item-8",
-                  quantity: sobremantelQty,
-                  is_customizable: true,
-                  customization_type: "sobremantel",
-                },
+                (() => {
+                  const sobreItem = allItems.find(
+                    (i) =>
+                      i.category === "sobremanteles" ||
+                      i.name.toLowerCase().includes("sobremantel"),
+                  );
+                  return {
+                    id: `pc-${Date.now()}-sm`,
+                    package_id: item.id,
+                    component_item_id: sobreItem?.id || "item-8",
+                    quantity: sobremantelQty,
+                    is_customizable: true,
+                    customization_type: "sobremantel",
+                    component_item: sobreItem || {
+                      id: "sobremantel-slot",
+                      sku: "SOBR-SLOT",
+                      name: "Sobremantel",
+                      category: "sobremanteles",
+                      total_stock: 50,
+                      rental_price: 30,
+                      replacement_price: 160,
+                      buffer_cleanup_hours: 48,
+                      is_active: true,
+                    },
+                  };
+                })(),
               ]
             : []),
         ]
       : undefined;
+
+    const autoDescription =
+      isPackage && updatedComponents && updatedComponents.length > 0
+        ? updatedComponents
+            .map((c) => {
+              const compName =
+                c.customization_type === "mantel_base"
+                  ? "Mantel Base"
+                  : c.customization_type === "sobremantel"
+                    ? "Sobremantel"
+                    : c.component_item?.name ||
+                      allItems.find((i) => i.id === c.component_item_id)
+                        ?.name ||
+                      "Pieza";
+              return `${c.quantity}x ${compName}`;
+            })
+            .join(" + ")
+        : description.trim() || null;
 
     await onSave(item.id, {
       name: name.trim(),
@@ -377,7 +460,7 @@ export function EditProductModal({
       replacement_price: replacementPrice,
       total_stock: computedStock,
       capacity_people: isPackage ? capacityPeople : item.capacity_people,
-      description: description.trim() || null,
+      description: autoDescription,
       image_url: imageUrl || null,
       fabric: showFabricSection ? fabric : null,
       variants: showFabricSection ? finalVariants : item.variants,

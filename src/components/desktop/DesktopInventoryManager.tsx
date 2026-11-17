@@ -20,6 +20,81 @@ interface DesktopInventoryManagerProps {
   onNotification: (msg: string) => void;
 }
 
+export function getPackagePills(
+  item: InventoryItem,
+  allItems: InventoryItem[],
+): { key: string; label: string; isTablecloth: boolean }[] {
+  const pills: { key: string; label: string; isTablecloth: boolean }[] = [];
+
+  // 1. Si el paquete ya tiene package_components
+  if (item.package_components && item.package_components.length > 0) {
+    for (const comp of item.package_components) {
+      const compItem =
+        allItems.find((i) => i.id === comp.component_item_id) ||
+        comp.component_item;
+      const isCustomMantel =
+        comp.is_customizable ||
+        comp.customization_type === "mantel_base" ||
+        comp.customization_type === "sobremantel" ||
+        compItem?.category === "manteles_base" ||
+        compItem?.category === "sobremanteles" ||
+        compItem?.category === "manteleria";
+
+      let label = "";
+      if (comp.customization_type === "mantel_base") {
+        label = `${comp.quantity}x Mantel Base`;
+      } else if (comp.customization_type === "sobremantel") {
+        label = `${comp.quantity}x Sobremantel`;
+      } else {
+        const rawName = compItem?.name;
+        const cleanName =
+          rawName && rawName !== "Pieza"
+            ? rawName
+            : allItems.find((i) => i.id === comp.component_item_id)?.name ||
+              "Artículo";
+        label = `${comp.quantity}x ${cleanName}`;
+      }
+
+      pills.push({
+        key: comp.id || `${comp.component_item_id}-${comp.customization_type}`,
+        label,
+        isTablecloth: Boolean(isCustomMantel),
+      });
+    }
+    return pills;
+  }
+
+  // 2. Si no tiene package_components, extraer de item.description para que NUNCA salga texto plano
+  if (item.description?.trim()) {
+    const parts = item.description
+      .replace(/\.$/, "")
+      .split(/\s*\+\s*|\s*,\s*/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    for (let idx = 0; idx < parts.length; idx++) {
+      let part = parts[idx];
+      const lower = part.toLowerCase();
+      const isTablecloth =
+        lower.includes("mantel") || lower.includes("sobremantel");
+
+      // Si empieza con número sin 'x' (ej: "1 Mesa Redonda" -> "1x Mesa Redonda")
+      const numMatch = part.match(/^(\d+)\s*x?\s+(.+)$/i);
+      if (numMatch) {
+        part = `${numMatch[1]}x ${numMatch[2]}`;
+      }
+
+      pills.push({
+        key: `desc-${idx}-${part}`,
+        label: part,
+        isTablecloth,
+      });
+    }
+  }
+
+  return pills;
+}
+
 export function DesktopInventoryManager({
   items,
   categories,
@@ -337,7 +412,9 @@ export function DesktopInventoryManager({
                             <span>{isPkg ? "Paquete" : "Suelto"}</span>
                           </span>
                           <span className="text-[11px] text-slate-500 capitalize">
-                            {item.category.replace("_", " ")}
+                            {isPkg
+                              ? "Paquetes"
+                              : item.category.replace("_", " ")}
                           </span>
                         </div>
                       </td>
@@ -347,47 +424,28 @@ export function DesktopInventoryManager({
                         {isPkg ? (
                           <div className="space-y-1 max-w-xs">
                             <div className="flex flex-wrap gap-1">
-                              {item.package_components &&
-                              item.package_components.length > 0 ? (
-                                item.package_components.map((comp) => {
-                                  const compItem =
-                                    items.find(
-                                      (i) => i.id === comp.component_item_id,
-                                    ) || comp.component_item;
-                                  const isCustomMantel =
-                                    comp.is_customizable ||
-                                    comp.customization_type === "mantel_base" ||
-                                    comp.customization_type === "sobremantel";
-                                  const label =
-                                    comp.customization_type === "mantel_base"
-                                      ? "Mantel Base"
-                                      : comp.customization_type ===
-                                          "sobremantel"
-                                        ? "Sobremantel"
-                                        : compItem?.name || "Pieza";
-
+                              {(() => {
+                                const pills = getPackagePills(item, items);
+                                if (pills.length === 0) {
                                   return (
-                                    <span
-                                      key={comp.id || comp.component_item_id}
-                                      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
-                                        isCustomMantel
-                                          ? "bg-purple-100 text-purple-900 border border-purple-200"
-                                          : "bg-blue-50 text-blue-900 border border-blue-200"
-                                      }`}
-                                    >
-                                      {comp.quantity}x {label}
+                                    <span className="text-[11px] text-slate-400 italic">
+                                      Sin componentes definidos
                                     </span>
                                   );
-                                })
-                              ) : item.description ? (
-                                <span className="text-[11px] text-slate-700 font-semibold">
-                                  {item.description}
-                                </span>
-                              ) : (
-                                <span className="text-[11px] text-slate-400 italic">
-                                  Sin componentes definidos
-                                </span>
-                              )}
+                                }
+                                return pills.map((pill) => (
+                                  <span
+                                    key={pill.key}
+                                    className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                                      pill.isTablecloth
+                                        ? "bg-purple-100 text-purple-900 border border-purple-200"
+                                        : "bg-blue-50 text-blue-900 border border-blue-200"
+                                    }`}
+                                  >
+                                    {pill.label}
+                                  </span>
+                                ));
+                              })()}
                             </div>
                             {item.capacity_people ? (
                               <span className="inline-block text-[10px] font-extrabold text-blue-700">
