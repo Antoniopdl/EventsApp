@@ -3,6 +3,7 @@
 import { Edit2, ShieldCheck, UserPlus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { AppUser, UserRole } from "@/core/domain/user";
+import { testSupabaseConnection } from "@/infrastructure/supabase/client";
 import {
   createAppUser,
   getAppUsers,
@@ -351,8 +352,73 @@ export function UserSettingsModal({
               );
             })}
           </div>
+
+          {/* Diagnóstico de Conexión Supabase */}
+          <SupabaseConnectionDiagnostic />
         </div>
       </div>
+    </div>
+  );
+}
+
+function SupabaseConnectionDiagnostic() {
+  const [status, setStatus] = useState<{
+    loading: boolean;
+    data?: {
+      configured: boolean;
+      url: string;
+      hasKey: boolean;
+      keyPrefix: string;
+      ok: boolean;
+      error?: string;
+    };
+  }>({ loading: false });
+
+  const checkConnection = async () => {
+    setStatus({ loading: true });
+    const res = await testSupabaseConnection();
+    setStatus({ loading: false, data: res });
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-800">
+          Diagnóstico Supabase (Nube)
+        </span>
+        <button
+          type="button"
+          onClick={checkConnection}
+          disabled={status.loading}
+          className="rounded-lg bg-blue-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {status.loading ? "Probando..." : "Probar Conexión"}
+        </button>
+      </div>
+
+      {status.data && (
+        <div
+          className={`rounded-xl p-2.5 text-[11px] space-y-1 ${
+            status.data.ok
+              ? "bg-emerald-50 border border-emerald-200 text-emerald-900"
+              : "bg-rose-50 border border-rose-200 text-rose-900"
+          }`}
+        >
+          <p className="font-extrabold">
+            {status.data.ok
+              ? "✅ Conexión con Supabase Exitosa (En Vivo)"
+              : "❌ Falló la conexión con Supabase"}
+          </p>
+          <p className="text-[10px] font-mono">
+            URL: {status.data.url} | Key: {status.data.keyPrefix}
+          </p>
+          {status.data.error && (
+            <p className="font-semibold text-rose-700">
+              Detalle: {status.data.error}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
