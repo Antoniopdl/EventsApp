@@ -100,6 +100,9 @@ export function QuoteWizard({
   const [selectedSobreColors, setSelectedSobreColors] = useState<
     Record<string, number>
   >({});
+  const [selectedItemVariants, setSelectedItemVariants] = useState<
+    Record<string, Record<string, number>>
+  >({});
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
@@ -183,10 +186,57 @@ export function QuoteWizard({
     setItemExactQty(id, current + delta);
   };
 
+  const setItemVariantExactQty = (
+    itemId: string,
+    variantId: string,
+    qty: number,
+  ) => {
+    const nextVQty = Math.max(0, qty);
+    setSelectedItemVariants((prev) => {
+      const currentMap = { ...(prev[itemId] || {}) };
+      if (nextVQty === 0) {
+        delete currentMap[variantId];
+      } else {
+        currentMap[variantId] = nextVQty;
+      }
+      const newTotal = Object.values(currentMap).reduce((s, v) => s + v, 0);
+      setItemExactQty(itemId, newTotal);
+      return { ...prev, [itemId]: currentMap };
+    });
+  };
+
+  const adjustItemVariantQty = (
+    itemId: string,
+    variantId: string,
+    delta: number,
+  ) => {
+    const current = selectedItemVariants[itemId]?.[variantId] || 0;
+    setItemVariantExactQty(itemId, variantId, current + delta);
+  };
+
   const calculateSubtotal = () => {
     return Object.entries(selectedItems).reduce((sum, [id, qty]) => {
       const item = inventory.find((i) => i.id === id);
-      return sum + (item ? item.rental_price * qty : 0);
+      if (!item) return sum;
+      const varMap = selectedItemVariants[id];
+      if (varMap && item.variants && item.variants.length > 0) {
+        let itemVarSum = 0;
+        let countedQty = 0;
+        for (const [varId, vQty] of Object.entries(varMap)) {
+          if (vQty <= 0) continue;
+          const v = item.variants.find((variant) => variant.id === varId);
+          const price =
+            v?.rental_price_override !== null &&
+            v?.rental_price_override !== undefined
+              ? v.rental_price_override
+              : item.rental_price;
+          itemVarSum += price * vQty;
+          countedQty += vQty;
+        }
+        const remaining = Math.max(0, qty - countedQty);
+        return sum + itemVarSum + remaining * item.rental_price;
+      }
+      return sum + item.rental_price * qty;
     }, 0);
   };
 
@@ -751,10 +801,30 @@ export function QuoteWizard({
       .map(([id, qty]) => {
         const item = inventory.find((i) => i.id === id);
         if (!item) return null;
+        const varMap = selectedItemVariants[id];
+        let appliedPrice = item.rental_price;
+        if (varMap && item.variants && item.variants.length > 0) {
+          let itemVarSum = 0;
+          let count = 0;
+          for (const [varId, vQty] of Object.entries(varMap)) {
+            if (vQty <= 0) continue;
+            const v = item.variants.find((variant) => variant.id === varId);
+            const price =
+              v?.rental_price_override !== null &&
+              v?.rental_price_override !== undefined
+                ? v.rental_price_override
+                : item.rental_price;
+            itemVarSum += price * vQty;
+            count += vQty;
+          }
+          if (count > 0) {
+            appliedPrice = itemVarSum / count;
+          }
+        }
         return {
           item_id: item.id,
           quantity: qty,
-          unit_price_applied: item.rental_price,
+          unit_price_applied: appliedPrice,
         };
       })
       .filter(Boolean) as {
@@ -763,10 +833,28 @@ export function QuoteWizard({
       unit_price_applied: number;
     }[];
 
+    const variantNotes: string[] = [];
+    for (const [id, varMap] of Object.entries(selectedItemVariants)) {
+      const it = inventory.find((i) => i.id === id);
+      if (!it || !it.variants) continue;
+      const parts: string[] = [];
+      for (const [vId, vQty] of Object.entries(varMap)) {
+        if (vQty <= 0) continue;
+        const v = it.variants.find((variant) => variant.id === vId);
+        if (v) parts.push(`${vQty}x ${v.color_name}`);
+      }
+      if (parts.length > 0) {
+        variantNotes.push(`• ${it.name}: ${parts.join(", ")}`);
+      }
+    }
+
     const combinedDeliveryNotes = [
       deliveryNotes,
       tableclothNotes.length > 0
         ? `[Mantelería de Paquetes]\n${tableclothNotes.join("\n")}`
+        : null,
+      variantNotes.length > 0
+        ? `[Colores y Variaciones Elegidas]\n${variantNotes.join("\n")}`
         : null,
     ]
       .filter(Boolean)
@@ -1273,65 +1361,154 @@ export function QuoteWizard({
               return (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-2.5"
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 space-y-2 transition-all hover:border-blue-200"
                 >
-                  <div className="flex-1 pr-2">
-                    <div className="flex items-center gap-1.5">
-                      <p className="font-bold text-slate-900 text-xs line-clamp-1">
-                        {item.name}
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 pr-2">
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-bold text-slate-900 text-xs line-clamp-1">
+                          {item.name}
+                        </p>
+                        {freeStock !== null && (
+                          <span
+                            className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-extrabold ${
+                              freeStock <= 0
+                                ? "bg-rose-100 text-rose-700"
+                                : freeStock < 10
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-emerald-100 text-emerald-800"
+                            }`}
+                          >
+                            {freeStock} libres
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-600 font-medium">
+                        {formatCurrency(item.rental_price)} c/u
+                        {isPkg && item.capacity_people
+                          ? ` • ${item.capacity_people} pers.`
+                          : ""}
+                        {item.variants && item.variants.length > 0
+                          ? ` • ${item.variants.length} colores/diseños`
+                          : ""}
                       </p>
-                      {freeStock !== null && (
-                        <span
-                          className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-extrabold ${
-                            freeStock <= 0
-                              ? "bg-rose-100 text-rose-700"
-                              : freeStock < 10
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-emerald-100 text-emerald-800"
-                          }`}
-                        >
-                          {freeStock} libres
-                        </span>
-                      )}
                     </div>
-                    <p className="text-[11px] text-slate-600 font-medium">
-                      {formatCurrency(item.rental_price)} c/u
-                      {isPkg && item.capacity_people
-                        ? ` • ${item.capacity_people} pers.`
-                        : ""}
-                    </p>
+
+                    {/* Controles de Cantidad (+ / - unitarios y campo numérico) */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => adjustQty(item.id, -1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-slate-800 text-sm active:scale-95 shadow-2xs cursor-pointer"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min={0}
+                        value={qty === 0 ? "" : qty}
+                        onChange={(e) =>
+                          setItemExactQty(
+                            item.id,
+                            Number.parseInt(e.target.value, 10) || 0,
+                          )
+                        }
+                        placeholder="0"
+                        className="w-10 rounded-lg border border-slate-300 bg-white py-1 text-center font-extrabold text-slate-900 text-xs outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => adjustQty(item.id, 1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 font-black text-white text-sm active:scale-95 shadow-2xs hover:bg-blue-700 cursor-pointer"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Controles de Cantidad (+ / - unitarios y campo numérico) */}
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => adjustQty(item.id, -1)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-slate-800 text-sm active:scale-95 shadow-2xs"
-                    >
-                      -
-                    </button>
-                    <input
-                      type="number"
-                      min={0}
-                      value={qty === 0 ? "" : qty}
-                      onChange={(e) =>
-                        setItemExactQty(
-                          item.id,
-                          Number.parseInt(e.target.value, 10) || 0,
-                        )
-                      }
-                      placeholder="0"
-                      className="w-10 rounded-lg border border-slate-300 bg-white py-1 text-center font-extrabold text-slate-900 text-xs outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => adjustQty(item.id, 1)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 font-black text-white text-sm active:scale-95 shadow-2xs hover:bg-blue-700"
-                    >
-                      +
-                    </button>
-                  </div>
+                  {/* Desglose por Variación (Colores de cristalería o diseños de platos) */}
+                  {item.variants && item.variants.length > 0 && (
+                    <div className="rounded-xl border border-blue-200/60 bg-blue-50/50 p-2 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-extrabold text-blue-950 uppercase flex items-center gap-1">
+                          <span>💎</span>
+                          <span>Colores / Diseños disponibles:</span>
+                        </span>
+                        <span className="text-[10px] text-blue-700 font-medium">
+                          Asigna piezas por variación
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {item.variants.map((v) => {
+                          const vQty =
+                            selectedItemVariants[item.id]?.[v.id] || 0;
+                          const vPrice =
+                            v.rental_price_override !== null &&
+                            v.rental_price_override !== undefined
+                              ? v.rental_price_override
+                              : item.rental_price;
+
+                          return (
+                            <div
+                              key={v.id}
+                              className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs shadow-2xs"
+                            >
+                              <div className="flex items-center gap-1.5 truncate pr-1">
+                                <span
+                                  className="h-2.5 w-2.5 rounded-full border border-slate-300 shrink-0"
+                                  style={{
+                                    backgroundColor: v.color_hex || "#d97706",
+                                  }}
+                                />
+                                <span className="font-bold text-slate-800 text-[11px] truncate">
+                                  {v.color_name}
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  (${vPrice} • {v.total_stock} stock)
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    adjustItemVariantQty(item.id, v.id, -1)
+                                  }
+                                  className="h-6 w-6 rounded border border-slate-200 bg-slate-50 text-[11px] font-black text-slate-700 active:scale-95 flex items-center justify-center cursor-pointer hover:bg-slate-100"
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={vQty === 0 ? "" : vQty}
+                                  onChange={(e) =>
+                                    setItemVariantExactQty(
+                                      item.id,
+                                      v.id,
+                                      Number.parseInt(e.target.value, 10) || 0,
+                                    )
+                                  }
+                                  placeholder="0"
+                                  className="w-8 rounded border border-slate-300 py-0.5 text-center font-bold text-[11px] outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    adjustItemVariantQty(item.id, v.id, 1)
+                                  }
+                                  className="h-6 w-6 rounded bg-blue-600 text-[11px] font-black text-white active:scale-95 flex items-center justify-center cursor-pointer hover:bg-blue-700"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

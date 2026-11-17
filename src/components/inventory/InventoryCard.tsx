@@ -227,11 +227,11 @@ export function InventoryCard({
             )}
           </div>
 
-          {/* Variantes de Color para Mantelería */}
+          {/* Variantes de Color, Cristalería y Diseños */}
           {hasVariants && (
             <div className="space-y-1 rounded-xl border border-slate-100 bg-slate-50 p-1.5">
               <span className="text-[10px] font-bold text-slate-500 uppercase block">
-                Colores Disponibles:
+                Colores y Diseños ({item.variants?.length}):
               </span>
               <div className="flex flex-wrap gap-1">
                 {item.variants?.map((v) => (
@@ -246,6 +246,12 @@ export function InventoryCard({
                     <span className="font-medium text-slate-700">
                       {v.color_name}
                     </span>
+                    {v.rental_price_override &&
+                      v.rental_price_override !== item.rental_price && (
+                        <span className="text-[9px] font-extrabold text-emerald-700 bg-emerald-50 px-1 rounded">
+                          ${v.rental_price_override}
+                        </span>
+                      )}
                     {isEditMode ? (
                       <input
                         type="number"

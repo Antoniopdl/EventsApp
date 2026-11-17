@@ -16,6 +16,10 @@ import {
 import { createLooseItemInDb } from "@/infrastructure/supabase/inventory-repository";
 import { EditPhotoModal } from "./EditPhotoModal";
 import { FabricColorSelector } from "./FabricColorSelector";
+import {
+  type GenericVariantDraft,
+  ItemVariantsEditor,
+} from "./ItemVariantsEditor";
 import { VariantPhotosModal } from "./VariantPhotosModal";
 
 interface CreateLooseItemModalProps {
@@ -76,6 +80,9 @@ export function CreateLooseItemModal({
 
   // Variantes de Color
   const [variants, setVariants] = useState<DraftVariant[]>([]);
+  const [genericVariants, setGenericVariants] = useState<GenericVariantDraft[]>(
+    [],
+  );
   const [newColorName, setNewColorName] = useState("Blanco");
   const [newColorHex, setNewColorHex] = useState("#f8fafc");
   const [newColorStock, setNewColorStock] = useState(15);
@@ -143,10 +150,19 @@ export function CreateLooseItemModal({
       }
     }
 
+    const hasActiveGeneric = !showFabricAndColors && genericVariants.length > 0;
+    const finalVariantsList = showFabricAndColors
+      ? finalVariants
+      : hasActiveGeneric
+        ? genericVariants
+        : undefined;
+
     const calculatedStock =
       showFabricAndColors && finalVariants.length > 0
         ? finalVariants.reduce((acc, v) => acc + v.total_stock, 0)
-        : totalStock;
+        : hasActiveGeneric
+          ? genericVariants.reduce((acc, v) => acc + (v.total_stock || 0), 0)
+          : totalStock;
 
     const compatibleTables =
       category === "manteles_base"
@@ -170,10 +186,7 @@ export function CreateLooseItemModal({
         category === "sobremanteles" ? tableclothSize : "estandar",
       compatible_tables: compatibleTables,
       image_url: imageUrl,
-      variants:
-        showFabricAndColors && finalVariants.length > 0
-          ? finalVariants
-          : undefined,
+      variants: finalVariantsList as any,
     });
     setIsSubmitting(false);
 
@@ -504,6 +517,20 @@ export function CreateLooseItemModal({
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Variaciones para Cristalería, Platos Base y Otros */}
+            {!showFabricAndColors && (
+              <ItemVariantsEditor
+                variants={genericVariants}
+                onChangeVariants={setGenericVariants}
+                baseRentalPrice={rentalPrice}
+                itemName={name || "este artículo"}
+                categorySlug={category}
+                onOpenPhotosModal={(v) =>
+                  setEditingPhotosVariant(v as DraftVariant)
+                }
+              />
             )}
 
             {/* Precios y Stock */}

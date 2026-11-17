@@ -18,6 +18,7 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { EditPhotoModal } from "./EditPhotoModal";
 import { FabricColorSelector } from "./FabricColorSelector";
+import { ItemVariantsEditor } from "./ItemVariantsEditor";
 import { VariantPhotosModal } from "./VariantPhotosModal";
 
 interface EditProductModalProps {
@@ -390,9 +391,13 @@ export function EditProductModal({
       }
     }
 
+    const hasActiveVariants = showFabricSection
+      ? finalVariants.length > 0
+      : variants.length > 0;
+    const finalSavedVariants = showFabricSection ? finalVariants : variants;
     const computedStock =
-      showFabricSection && finalVariants.length > 0
-        ? finalVariants.reduce((s, v) => s + v.total_stock, 0)
+      hasActiveVariants
+        ? finalSavedVariants.reduce((s, v) => s + (v.total_stock || 0), 0)
         : totalStock;
 
     const updatedComponents: PackageComponent[] | undefined = isPackage
@@ -517,7 +522,7 @@ export function EditProductModal({
       tablecloth_size:
         category === "sobremanteles" ? tableclothSize : "estandar",
       compatible_tables: compatibleTables,
-      variants: showFabricSection ? finalVariants : item.variants,
+      variants: finalSavedVariants,
       package_components: updatedComponents,
     });
 
@@ -953,6 +958,22 @@ export function EditProductModal({
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Variaciones de Cristalería, Platos Base y Otros Productos */}
+            {!isPackage && !showFabricSection && (
+              <ItemVariantsEditor
+                variants={variants}
+                onChangeVariants={(updated) =>
+                  setVariants(updated as InventoryVariant[])
+                }
+                baseRentalPrice={rentalPrice}
+                itemName={name}
+                categorySlug={category}
+                onOpenPhotosModal={(v) =>
+                  setEditingPhotosVariant(v as InventoryVariant)
+                }
+              />
             )}
 
             {/* Precios y Capacidad / Stock */}

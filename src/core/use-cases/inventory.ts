@@ -423,6 +423,158 @@ export const INITIAL_INVENTORY_SEED: InventoryItem[] = [
     is_active: true,
   },
   {
+    id: "item-copa-cristal",
+    sku: "CRIS-COPA-VINO",
+    name: "Copa de Cristal para Agua/Vino",
+    category: "cristaleria",
+    item_type: "individual",
+    description: "Copa de cristal de corte fino para mesa principal y gala. Disponible en múltiples colores y acabados.",
+    total_stock: 270,
+    rental_price: 18.0,
+    replacement_price: 90.0,
+    image_url:
+      "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=600&q=80",
+    buffer_cleanup_hours: 6,
+    is_active: true,
+    variants: [
+      {
+        id: "var-copa-transparente",
+        item_id: "item-copa-cristal",
+        color_name: "Transparente",
+        color_hex: "#e2e8f0",
+        total_stock: 120,
+        rental_price_override: 18.0,
+        image_url:
+          "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=600&q=80",
+        images: [
+          "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=600&q=80",
+          "https://images.unsplash.com/photo-1574096079513-d8259312b785?auto=format&fit=crop&w=600&q=80",
+        ],
+      },
+      {
+        id: "var-copa-negra",
+        item_id: "item-copa-cristal",
+        color_name: "Negra",
+        color_hex: "#0f172a",
+        total_stock: 60,
+        rental_price_override: 24.0,
+        image_url:
+          "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&w=600&q=80",
+        images: [
+          "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&w=600&q=80",
+        ],
+      },
+      {
+        id: "var-copa-roja",
+        item_id: "item-copa-cristal",
+        color_name: "Roja",
+        color_hex: "#dc2626",
+        total_stock: 50,
+        rental_price_override: 22.0,
+        image_url:
+          "https://images.unsplash.com/photo-1516594798947-e65505dbb29d?auto=format&fit=crop&w=600&q=80",
+        images: [
+          "https://images.unsplash.com/photo-1516594798947-e65505dbb29d?auto=format&fit=crop&w=600&q=80",
+        ],
+      },
+      {
+        id: "var-copa-dorada",
+        item_id: "item-copa-cristal",
+        color_name: "Dorada",
+        color_hex: "#d97706",
+        total_stock: 40,
+        rental_price_override: 26.0,
+        image_url:
+          "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=600&q=80",
+        images: [
+          "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=600&q=80",
+        ],
+      },
+    ],
+  },
+  {
+    id: "item-plato-base-lux",
+    sku: "PLAT-BASE-LUX",
+    name: "Plato Base Decorativo",
+    category: "platos_base",
+    item_type: "individual",
+    description: "Plato base para presentación de mesa en múltiples diseños, texturas y acabados de lujo.",
+    total_stock: 300,
+    rental_price: 25.0,
+    replacement_price: 150.0,
+    image_url:
+      "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&w=600&q=80",
+    buffer_cleanup_hours: 6,
+    is_active: true,
+    variants: [
+      {
+        id: "var-plato-dorado",
+        item_id: "item-plato-base-lux",
+        color_name: "Dorado Labrado",
+        color_hex: "#d97706",
+        total_stock: 80,
+        rental_price_override: 25.0,
+        image_url:
+          "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&w=600&q=80",
+        images: [
+          "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&w=600&q=80",
+        ],
+      },
+      {
+        id: "var-plato-plata",
+        item_id: "item-plato-base-lux",
+        color_name: "Plata Espejo",
+        color_hex: "#94a3b8",
+        total_stock: 60,
+        rental_price_override: 25.0,
+        image_url:
+          "https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=600&q=80",
+        images: [
+          "https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=600&q=80",
+        ],
+      },
+      {
+        id: "var-plato-rattan",
+        item_id: "item-plato-base-lux",
+        color_name: "Rattan Natural",
+        color_hex: "#a16207",
+        total_stock: 50,
+        rental_price_override: 32.0,
+        image_url:
+          "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=600&q=80",
+        images: [
+          "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=600&q=80",
+        ],
+      },
+      {
+        id: "var-plato-negro",
+        item_id: "item-plato-base-lux",
+        color_name: "Negro Mate",
+        color_hex: "#1e293b",
+        total_stock: 40,
+        rental_price_override: 25.0,
+        image_url:
+          "https://images.unsplash.com/photo-1581783342308-f792dbdd27c5?auto=format&fit=crop&w=600&q=80",
+        images: [
+          "https://images.unsplash.com/photo-1581783342308-f792dbdd27c5?auto=format&fit=crop&w=600&q=80",
+        ],
+      },
+      {
+        id: "var-plato-borde-oro",
+        item_id: "item-plato-base-lux",
+        color_name: "Borde Oro Transparente",
+        color_hex: "#eab308",
+        total_stock: 70,
+        rental_price_override: 28.0,
+        image_url:
+          "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=600&q=80",
+        images: [
+          "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=600&q=80",
+        ],
+      },
+    ],
+  },
+  {
     id: "pkg-seed-1",
     sku: "PAQ-RED-HER",
     name: "Paquete Redondo Herrería (10p)",

@@ -11,6 +11,7 @@ import {
   Search,
   Tag,
   Trash2,
+  Wine,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
@@ -20,6 +21,7 @@ import {
 } from "@/core/domain/inventory";
 import { formatCurrency } from "@/lib/utils";
 import { FabricMasterCatalogManager } from "../inventory/FabricMasterCatalogManager";
+import { ProductVariantsManagerModal } from "../inventory/ProductVariantsManagerModal";
 import { TableclothCatalogModal } from "../inventory/TableclothCatalogModal";
 
 interface DesktopInventoryManagerProps {
@@ -132,6 +134,9 @@ export function DesktopInventoryManager({
   const [showTableclothCatalog, setShowTableclothCatalog] = useState(false);
   const [showMasterCatalogManager, setShowMasterCatalogManager] =
     useState(false);
+  const [showVariantsManager, setShowVariantsManager] = useState(false);
+  const [selectedVariantItem, setSelectedVariantItem] =
+    useState<InventoryItem | null>(null);
 
   // Edición rápida en celda
   const [editingCell, setEditingCell] = useState<{
@@ -236,6 +241,18 @@ export function DesktopInventoryManager({
 
         {/* Acciones principales */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedVariantItem(null);
+              setShowVariantsManager(true);
+            }}
+            className="flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-900 shadow-xs hover:bg-blue-100 active:scale-95 transition-all cursor-pointer"
+            title="Gestionar variaciones de cristalería, copas, platos base y mobiliario"
+          >
+            <Wine className="h-4 w-4 text-blue-700" />
+            <span>🥂 Variantes Cristalería/Platos</span>
+          </button>
           <button
             type="button"
             onClick={() => setShowTableclothCatalog(true)}
@@ -535,13 +552,29 @@ export function DesktopInventoryManager({
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => setShowTableclothCatalog(true)}
-                                  className="text-[10px] font-bold text-purple-700 hover:text-purple-900 hover:underline flex items-center gap-0.5 ml-1 cursor-pointer"
-                                  title="Ver fotos de colores en el muestrario"
+                                  onClick={() => {
+                                    setSelectedVariantItem(item);
+                                    setShowVariantsManager(true);
+                                  }}
+                                  className="text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:underline flex items-center gap-0.5 ml-1 cursor-pointer"
+                                  title="Editar variaciones, precios individuales y fotos de este artículo"
                                 >
-                                  <Camera className="h-3 w-3" />
-                                  <span>Fotos</span>
+                                  <Wine className="h-3 w-3" />
+                                  <span>Variantes</span>
                                 </button>
+                                {item.fabric && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setShowTableclothCatalog(true)
+                                    }
+                                    className="text-[10px] font-bold text-purple-700 hover:text-purple-900 hover:underline flex items-center gap-0.5 ml-1 cursor-pointer"
+                                    title="Ver fotos de colores en el muestrario"
+                                  >
+                                    <Camera className="h-3 w-3" />
+                                    <span>Fotos</span>
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -726,6 +759,23 @@ export function DesktopInventoryManager({
       {showMasterCatalogManager && (
         <FabricMasterCatalogManager
           onClose={() => setShowMasterCatalogManager(false)}
+          onNotification={onNotification}
+        />
+      )}
+      {showVariantsManager && (
+        <ProductVariantsManagerModal
+          initialItem={selectedVariantItem}
+          allItems={items}
+          onSaveItemVariants={async (itemId, variants, computedTotalStock) => {
+            await onUpdateDetails(itemId, {
+              variants,
+              total_stock: computedTotalStock,
+            });
+          }}
+          onClose={() => {
+            setShowVariantsManager(false);
+            setSelectedVariantItem(null);
+          }}
           onNotification={onNotification}
         />
       )}

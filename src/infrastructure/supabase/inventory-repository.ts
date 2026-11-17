@@ -125,6 +125,29 @@ export function normalizeCategoryFromDb(item: {
       return "manteles_base";
     }
   }
+
+  // Cristalería y Platos Base si vienen clasificados como vajilla u otros
+  if (
+    item.category === "vajilla" ||
+    item.category === "otros" ||
+    !item.category
+  ) {
+    if (
+      lowerName.includes("copa") ||
+      lowerName.includes("cristal") ||
+      lowerSku.includes("cris")
+    ) {
+      return "cristaleria";
+    }
+    if (
+      lowerName.includes("plato base") ||
+      lowerSku.includes("plat-base") ||
+      lowerName.includes("plato")
+    ) {
+      return "platos_base";
+    }
+  }
+
   return item.category;
 }
 
@@ -136,6 +159,8 @@ function mapToDbCategory(cat: string): string {
     "manteles_base",
     "sobremanteles",
     "vajilla",
+    "cristaleria",
+    "platos_base",
     "toldos_carpas",
     "decoracion",
     "otros",
@@ -143,6 +168,8 @@ function mapToDbCategory(cat: string): string {
   if (allowed.includes(cat)) return cat;
   if (cat.includes("mantel") || cat.includes("sobremantel"))
     return "manteleria";
+  if (cat === "cristaleria" || cat === "platos_base")
+    return "vajilla";
   return "otros";
 }
 
@@ -630,6 +657,10 @@ export async function updateItemDetailsInDb(
               color_name: v.color_name,
               color_hex: v.color_hex || "#2563eb",
               total_stock: v.total_stock,
+              ...(v.rental_price_override !== undefined &&
+              v.rental_price_override !== null
+                ? { rental_price_override: v.rental_price_override }
+                : {}),
               ...(v.fabric ? { fabric: v.fabric } : {}),
               ...(v.image_url ? { image_url: v.image_url } : {}),
               ...(v.images && v.images.length > 0 ? { images: v.images } : {}),
@@ -646,6 +677,10 @@ export async function updateItemDetailsInDb(
                   color_name: v.color_name,
                   color_hex: v.color_hex || "#2563eb",
                   total_stock: v.total_stock,
+                  ...(v.rental_price_override !== undefined &&
+                  v.rental_price_override !== null
+                    ? { rental_price_override: v.rental_price_override }
+                    : {}),
                 })),
               );
             }
@@ -792,6 +827,7 @@ export async function createLooseItemInDb(input: {
           color_hex: v.color_hex || "#2563eb",
           fabric: v.fabric || input.fabric || null,
           total_stock: v.total_stock,
+          rental_price_override: v.rental_price_override ?? null,
           images: v.images || [],
           image_url: v.image_url || v.images?.[0] || null,
         }))
@@ -883,6 +919,10 @@ export async function createLooseItemInDb(input: {
             color_name: v.color_name,
             color_hex: v.color_hex,
             total_stock: v.total_stock,
+            ...(v.rental_price_override !== undefined &&
+            v.rental_price_override !== null
+              ? { rental_price_override: v.rental_price_override }
+              : {}),
             ...(v.fabric ? { fabric: v.fabric } : {}),
             ...(v.image_url ? { image_url: v.image_url } : {}),
             ...(v.images && v.images.length > 0 ? { images: v.images } : {}),

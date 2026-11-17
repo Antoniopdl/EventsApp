@@ -45,12 +45,28 @@ export const DEFAULT_CATEGORIES: Category[] = [
     sort_order: 4,
   },
   {
+    id: "cat-cristaleria",
+    slug: "cristaleria",
+    label: "Cristalería y Copas",
+    icon: "🥂",
+    is_active: true,
+    sort_order: 5,
+  },
+  {
+    id: "cat-platos-base",
+    slug: "platos_base",
+    label: "Platos Base y Loza",
+    icon: "🍽️",
+    is_active: true,
+    sort_order: 6,
+  },
+  {
     id: "cat-vajilla",
     slug: "vajilla",
     label: "Vajilla",
     icon: "🍷",
     is_active: true,
-    sort_order: 5,
+    sort_order: 7,
   },
   {
     id: "cat-decoracion",
@@ -58,7 +74,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
     label: "Decoración",
     icon: "🏺",
     is_active: true,
-    sort_order: 6,
+    sort_order: 8,
   },
   {
     id: "cat-toldos",
@@ -66,7 +82,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
     label: "Toldos y Carpas",
     icon: "⛺",
     is_active: true,
-    sort_order: 7,
+    sort_order: 9,
   },
   {
     id: "cat-otros",
@@ -74,7 +90,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
     label: "Otros",
     icon: "📦",
     is_active: true,
-    sort_order: 8,
+    sort_order: 10,
   },
 ];
 
@@ -95,6 +111,28 @@ export function isTableclothCategory(categorySlug: string): boolean {
     clean === "sobremanteles" ||
     clean === "manteleria" ||
     clean.includes("mantel")
+  );
+}
+
+export function isGlasswareOrDishesCategory(categorySlug: string): boolean {
+  const clean = categorySlug.toLowerCase();
+  return (
+    clean === "cristaleria" ||
+    clean === "platos_base" ||
+    clean === "vajilla" ||
+    clean.includes("cristal") ||
+    clean.includes("copa") ||
+    clean.includes("vaso") ||
+    clean.includes("plato") ||
+    clean.includes("loza")
+  );
+}
+
+export function isVariantEligibleCategory(categorySlug: string): boolean {
+  return (
+    isTableclothCategory(categorySlug) ||
+    isGlasswareOrDishesCategory(categorySlug) ||
+    categorySlug === "decoracion"
   );
 }
 

@@ -149,6 +149,56 @@ export default function CatalogoPublicoPage() {
       }
     }
 
+    // Artículos de Cristalería, Platos Base y otros con variantes
+    const otherVariantItems = items.filter(
+      (it) =>
+        it.variants &&
+        it.variants.length > 0 &&
+        !isTableclothCategory(it.category || ""),
+    );
+
+    for (const item of otherVariantItems) {
+      const isCris =
+        item.category === "cristaleria" ||
+        item.name.toLowerCase().includes("copa") ||
+        item.name.toLowerCase().includes("cristal");
+      const isPlato =
+        item.category === "platos_base" ||
+        item.name.toLowerCase().includes("plato");
+      const displayFabric = isCris
+        ? "Cristalería"
+        : isPlato
+          ? "Platos Base"
+          : item.category.replace("_", " ");
+
+      for (const v of item.variants || []) {
+        const vImgs =
+          v.images && v.images.length > 0
+            ? v.images
+            : v.image_url
+              ? [v.image_url]
+              : item.image_url
+                ? [item.image_url]
+                : [];
+
+        list.push({
+          uniqueKey: `${item.id}-${v.id}`,
+          itemName: item.name,
+          fabric: displayFabric,
+          colorName: v.color_name,
+          colorHex: v.color_hex || "#d97706",
+          rentalPrice: v.rental_price_override || item.rental_price,
+          totalStock: v.total_stock,
+          images:
+            vImgs.length > 0
+              ? vImgs
+              : [
+                  "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=600&q=80",
+                ],
+        });
+      }
+    }
+
     return list;
   }, [items]);
 
@@ -181,7 +231,7 @@ export default function CatalogoPublicoPage() {
   }, [entries, selectedFabric, search]);
 
   const handleConsultWhatsApp = (entry: CatalogEntry) => {
-    const text = `¡Hola Fer Eventos! Vi su catálogo digital y me interesa consultar disponibilidad del *${entry.itemName}* en color *${entry.colorName}* (Tela *${entry.fabric}*). ¿Me podrían dar información para mi evento?`;
+    const text = `¡Hola Fer Eventos! Vi su catálogo digital y me interesa consultar disponibilidad del *${entry.itemName}* en color/diseño *${entry.colorName}* (${entry.fabric}). ¿Me podrían dar información para mi evento?`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -199,7 +249,7 @@ export default function CatalogoPublicoPage() {
                 Fer Eventos
               </h1>
               <p className="text-[11px] font-bold text-purple-400">
-                Catálogo de Manteles y Telas
+                Catálogo de Manteles, Cristalería y Platos Base
               </p>
             </div>
           </div>
