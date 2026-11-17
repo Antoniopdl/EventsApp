@@ -655,3 +655,62 @@ export function subscribeToInventoryRealtime(
     supabase?.removeChannel(channel);
   };
 }
+
+/**
+ * Elimina un producto individual o paquete en Supabase y almacenamiento local.
+ */
+export async function deleteItemFromDb(id: string): Promise<boolean> {
+  // 1. Limpiar almacenamiento local
+  if (typeof window !== "undefined") {
+    const loose = getLocalLooseItems().filter((i) => i.id !== id);
+    localStorage.setItem(CUSTOM_LOOSE_ITEMS_STORAGE_KEY, JSON.stringify(loose));
+
+    const pkgs = getLocalPackages().filter((p) => p.id !== id);
+    localStorage.setItem(CUSTOM_PACKAGES_STORAGE_KEY, JSON.stringify(pkgs));
+
+    const overrides = getLocalItemOverrides();
+    delete overrides[id];
+    localStorage.setItem(ITEM_OVERRIDES_STORAGE_KEY, JSON.stringify(overrides));
+  }
+
+  // 2. Si Supabase está conectado, eliminar o marcar inactivo
+  if (isSupabaseConfigured && supabase) {
+    try {
+      if (isUuid(id)) {
+        // Primero eliminar componentes si es paquete
+        await supabase.from("package_items").delete().eq("package_id", id);
+        // Eliminar variantes si tiene
+        await supabase
+          .from("inventory_item_variants")
+          .delete()
+          .eq("item_id", id);
+        // Eliminar el artículo
+        const { error } = await supabase
+          .from("inventory_items")
+          .delete()
+          .eq("id", id);
+        if (error) {
+          // Si tiene referencias de reservas históricas, marcar inactivo
+          await supabase
+            .from("inventory_items")
+            .update({ is_active: false })
+            .eq("id", id);
+        }
+      } else {
+        // Si tiene ID semilla, buscar por SKU y eliminar
+        const fallback = findFallbackItemById(id);
+        if (fallback) {
+          await supabase
+            .from("inventory_items")
+            .delete()
+            .eq("sku", fallback.sku);
+        }
+      }
+    } catch (e) {
+      console.warn("Error eliminando artículo en Supabase:", e);
+      return false;
+    }
+  }
+
+  return true;
+}

@@ -1,4 +1,4 @@
-import { Lock, Settings } from "lucide-react";
+import { Lock, Monitor, Settings } from "lucide-react";
 import type { AppUser, UserRole } from "@/core/domain/user";
 
 interface HeaderProps {
@@ -7,6 +7,7 @@ interface HeaderProps {
   onRoleChange: (role: UserRole) => void;
   onOpenSettings?: () => void;
   onLogout?: () => void;
+  onSwitchToDesktop?: () => void;
 }
 
 export function Header({
@@ -15,6 +16,7 @@ export function Header({
   onRoleChange,
   onOpenSettings,
   onLogout,
+  onSwitchToDesktop,
 }: HeaderProps) {
   const isAdmin = currentRole === "admin";
 
@@ -62,6 +64,18 @@ export function Header({
             Entregas
           </button>
         </div>
+
+        {isAdmin && onSwitchToDesktop && (
+          <button
+            type="button"
+            onClick={onSwitchToDesktop}
+            title="Cambiar a Modo Escritorio (Pantalla Ancha)"
+            className="hidden sm:flex h-8 items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+          >
+            <Monitor className="h-3.5 w-3.5" />
+            <span className="text-[11px]">Laptop</span>
+          </button>
+        )}
 
         {isAdmin && onOpenSettings && (
           <button

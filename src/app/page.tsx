@@ -5,6 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 import { EventAgenda } from "@/components/bookings/EventAgenda";
 import { QuoteWizard } from "@/components/bookings/QuoteWizard";
 import { ClientList } from "@/components/clients/ClientList";
+import { DesktopClientManager } from "@/components/desktop/DesktopClientManager";
+import { DesktopInventoryManager } from "@/components/desktop/DesktopInventoryManager";
+import { DesktopLayout } from "@/components/desktop/DesktopLayout";
+import { CategoryManagerModal } from "@/components/inventory/CategoryManagerModal";
+import { CreateLooseItemModal } from "@/components/inventory/CreateLooseItemModal";
+import { CreatePackageModal } from "@/components/inventory/CreatePackageModal";
+import { EditProductModal } from "@/components/inventory/EditProductModal";
 import { InventoryGrid } from "@/components/inventory/InventoryGrid";
 import { LogisticsTimeline } from "@/components/logistics/LogisticsTimeline";
 import { BottomNav, type NavTab } from "@/components/shared/BottomNav";
@@ -12,10 +19,12 @@ import { Header } from "@/components/shared/Header";
 import { LoginModal } from "@/components/shared/LoginModal";
 import { UserSettingsModal } from "@/components/shared/UserSettingsModal";
 import type { ClientAddress, ClientWithStats } from "@/core/domain/client";
-import type { InventoryItem } from "@/core/domain/inventory";
+import type { Category, InventoryItem } from "@/core/domain/inventory";
 import type { AppUser, UserRole } from "@/core/domain/user";
 import { INITIAL_INVENTORY_SEED } from "@/core/use-cases/inventory";
+import { getCategories } from "@/infrastructure/supabase/category-repository";
 import {
+  deleteItemFromDb,
   getInventoryItems,
   getLastSupabaseError,
   subscribeToInventoryRealtime,
@@ -30,9 +39,21 @@ export default function Home() {
   const [role, setRole] = useState<UserRole>("admin");
   const [tab, setTab] = useState<NavTab>("inventory");
   const [items, setItems] = useState<InventoryItem[]>(INITIAL_INVENTORY_SEED);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Modales
+  // Modo de visualización en laptop (escritorio por defecto en pantallas grandes, pero alternable)
+  const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
+
+  // Modales compartidos de inventario
+  const [showCreatePackageModal, setShowCreatePackageModal] = useState(false);
+  const [showCreateLooseModal, setShowCreateLooseModal] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<InventoryItem | null>(
+    null,
+  );
+
+  // Modales generales
   const [showUserSettingsModal, setShowUserSettingsModal] = useState(false);
 
   // Cliente preseleccionado para cotizar
@@ -68,6 +89,7 @@ export default function Home() {
   useEffect(() => {
     if (!currentUser) return;
 
+    setCategories(getCategories());
     getInventoryItems().then((loadedItems) => {
       if (loadedItems && loadedItems.length > 0) {
         setItems(loadedItems);
@@ -85,6 +107,16 @@ export default function Home() {
       unsubscribe();
     };
   }, [currentUser, showNotification]);
+
+  const handleDeleteItem = async (id: string, name: string) => {
+    const ok = await deleteItemFromDb(id);
+    if (ok) {
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      showNotification(`"${name}" eliminado del inventario.`);
+    } else {
+      showNotification("Error al eliminar el producto.");
+    }
+  };
 
   const handleAdjustStock = async (id: string, delta: number) => {
     const currentItem = items.find((i) => i.id === id);
@@ -210,6 +242,139 @@ export default function Home() {
     );
   }
 
+  // Renderizado en Modo Escritorio para Laptop/Computadora (Solo cuando viewMode === 'desktop' y sea admin)
+  if (viewMode === "desktop" && role === "admin") {
+    return (
+      <div className="relative">
+        <DesktopLayout
+          currentUser={currentUser}
+          currentRole={role}
+          activeTab={tab}
+          onTabChange={(newTab) => setTab(newTab as NavTab)}
+          onRoleChange={handleRoleChange}
+          onOpenSettings={() => setShowUserSettingsModal(true)}
+          onLogout={handleLogout}
+          onSwitchToMobileView={() => setViewMode("mobile")}
+          onNotification={showNotification}
+        >
+          {tab === "inventory" && (
+            <DesktopInventoryManager
+              items={items}
+              categories={categories}
+              onOpenCreateLoose={() => setShowCreateLooseModal(true)}
+              onOpenCreatePackage={() => setShowCreatePackageModal(true)}
+              onOpenCategoryManager={() => setShowCategoryManager(true)}
+              onOpenFullEdit={(item) => setEditingProduct(item)}
+              onUpdateDetails={handleUpdateDetails}
+              onDeleteItem={handleDeleteItem}
+              onNotification={showNotification}
+            />
+          )}
+
+          {tab === "clients" && (
+            <DesktopClientManager
+              onStartQuoteWithClient={(c, addr) => {
+                handleStartQuoteFromClient(c, addr);
+                setTab("quote");
+              }}
+              onNotification={showNotification}
+            />
+          )}
+
+          {tab === "quote" && (
+            <div className="max-w-3xl mx-auto">
+              <QuoteWizard
+                inventory={items}
+                initialClient={quoteClient}
+                initialAddress={quoteAddress}
+                onNotification={showNotification}
+                onBookingCreated={() => {
+                  showNotification("¡Renta agendada! Consulta en la Agenda.");
+                }}
+              />
+            </div>
+          )}
+
+          {tab === "events" && (
+            <div className="max-w-4xl mx-auto">
+              <EventAgenda onNotification={showNotification} />
+            </div>
+          )}
+
+          {tab === "logistics" && (
+            <div className="max-w-4xl mx-auto">
+              <LogisticsTimeline
+                role={role}
+                onNotification={showNotification}
+              />
+            </div>
+          )}
+        </DesktopLayout>
+
+        {/* Notificación Toast Flotante */}
+        {toastMessage && (
+          <div className="fixed top-6 right-6 z-50 flex items-center gap-2 rounded-2xl bg-slate-900/95 px-4 py-3 text-white shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-200">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            <p className="font-semibold text-xs">{toastMessage}</p>
+          </div>
+        )}
+
+        {/* Modales de Inventario en Desktop */}
+        {showCreateLooseModal && (
+          <CreateLooseItemModal
+            categories={categories}
+            onClose={() => setShowCreateLooseModal(false)}
+            onItemCreated={(newItem) => {
+              setItems((prev) => [newItem, ...prev]);
+              showNotification(`Artículo "${newItem.name}" creado con éxito.`);
+            }}
+            onNotification={showNotification}
+          />
+        )}
+
+        {showCreatePackageModal && (
+          <CreatePackageModal
+            availableItems={items}
+            onClose={() => setShowCreatePackageModal(false)}
+            onPackageCreated={(newPkg) => {
+              setItems((prev) => [newPkg, ...prev]);
+              showNotification(`Paquete "${newPkg.name}" creado con éxito.`);
+            }}
+            onNotification={showNotification}
+          />
+        )}
+
+        {showCategoryManager && (
+          <CategoryManagerModal
+            categories={categories}
+            onClose={() => setShowCategoryManager(false)}
+            onCategoriesUpdated={(updated) => setCategories(updated)}
+            onNotification={showNotification}
+          />
+        )}
+
+        {editingProduct && (
+          <EditProductModal
+            item={editingProduct}
+            allItems={items}
+            categories={categories}
+            onClose={() => setEditingProduct(null)}
+            onSave={handleUpdateDetails}
+            onNotification={showNotification}
+          />
+        )}
+
+        {showUserSettingsModal && (
+          <UserSettingsModal
+            onClose={() => setShowUserSettingsModal(false)}
+            onNotification={showNotification}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Renderizado en Modo Móvil (iPhone / Teléfono) - 100% Intacto
   return (
     <div className="flex min-h-screen justify-center bg-slate-100 sm:p-4">
       <div className="relative flex min-h-screen w-full max-w-md flex-col overflow-hidden bg-white shadow-2xl sm:min-h-[850px] sm:max-h-[880px] sm:rounded-[36px] sm:border-8 sm:border-slate-800">
@@ -219,6 +384,7 @@ export default function Home() {
           onRoleChange={handleRoleChange}
           onOpenSettings={() => setShowUserSettingsModal(true)}
           onLogout={handleLogout}
+          onSwitchToDesktop={() => setViewMode("desktop")}
         />
 
         <main className="flex-1 overflow-y-auto px-4 pt-3 pb-24 no-scrollbar">

@@ -623,3 +623,34 @@ export async function deleteClientAddressInDb(
 
   return true;
 }
+
+/**
+ * Elimina un cliente y sus direcciones asociadas de Supabase y almacenamiento local.
+ */
+export async function deleteClientInDb(clientId: string): Promise<boolean> {
+  const current = getLocalClients();
+  const updated = current.filter((c) => c.id !== clientId);
+  saveLocalClients(updated);
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from("client_addresses")
+        .delete()
+        .eq("client_id", clientId);
+      const { error } = await supabase
+        .from("clients")
+        .delete()
+        .eq("id", clientId);
+      if (error) {
+        console.warn("Error eliminando cliente en Supabase:", error);
+        return false;
+      }
+    } catch (e) {
+      console.warn("Error eliminando cliente en Supabase:", e);
+      return false;
+    }
+  }
+
+  return true;
+}

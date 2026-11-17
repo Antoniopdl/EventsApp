@@ -51,7 +51,7 @@ export async function testSupabaseConnection(): Promise<{
   }
 
   try {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("inventory_items")
       .select("id")
       .limit(1);
