@@ -49,6 +49,20 @@ export function EditProductModal({
   const [imageUrl, setImageUrl] = useState(item.image_url || "");
   const [showPhotoModal, setShowPhotoModal] = useState(false);
 
+  // Sincronizar en caso de que item cambie
+  useEffect(() => {
+    setName(item.name);
+    setCategory(item.category);
+    setRentalPrice(item.rental_price);
+    setReplacementPrice(item.replacement_price || 0);
+    setTotalStock(item.total_stock);
+    setCapacityPeople(item.capacity_people || 10);
+    setDescription(item.description || "");
+    if (item.image_url) {
+      setImageUrl(item.image_url);
+    }
+  }, [item]);
+
   // Telas y variantes (solo para manteles/sobremanteles)
   const [fabrics, setFabrics] = useState<string[]>(() => getFabrics());
   const [fabric, setFabric] = useState<string>(item.fabric || "Tergal");
@@ -453,6 +467,10 @@ export function EditProductModal({
             .join(" + ")
         : description.trim() || null;
 
+    const finalImageUrl = imageUrl?.trim()
+      ? imageUrl.trim()
+      : item.image_url || null;
+
     await onSave(item.id, {
       name: name.trim(),
       category: isPackage ? "paquetes" : category,
@@ -461,7 +479,7 @@ export function EditProductModal({
       total_stock: computedStock,
       capacity_people: isPackage ? capacityPeople : item.capacity_people,
       description: autoDescription,
-      image_url: imageUrl || null,
+      image_url: finalImageUrl,
       fabric: showFabricSection ? fabric : null,
       variants: showFabricSection ? finalVariants : item.variants,
       package_components: updatedComponents,

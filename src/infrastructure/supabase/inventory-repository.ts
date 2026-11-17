@@ -69,7 +69,12 @@ function saveLocalItemOverride(
 ): void {
   if (typeof window === "undefined") return;
   const current = getLocalItemOverrides();
-  current[id] = { ...current[id], ...updates };
+  const safeUpdates = { ...updates };
+  // No anular image_url si viene undefined o vacío ("")
+  if (safeUpdates.image_url === "" || safeUpdates.image_url === undefined) {
+    delete safeUpdates.image_url;
+  }
+  current[id] = { ...current[id], ...safeUpdates };
   localStorage.setItem(ITEM_OVERRIDES_STORAGE_KEY, JSON.stringify(current));
 }
 
@@ -309,9 +314,12 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
               item.item_type === "paquete" ||
               (item.sku?.startsWith("PAQ-") ?? false);
             const resolvedCat = isPkg ? "paquetes" : rawCat;
+            const resolvedImage =
+              ov?.image_url?.trim() || item.image_url || null;
             return {
               ...item,
               ...ov,
+              image_url: resolvedImage,
               category: resolvedCat,
               item_type: isPkg ? "paquete" : item.item_type || "individual",
               package_components:
@@ -350,9 +358,12 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
               item.item_type === "paquete" ||
               (item.sku?.startsWith("PAQ-") ?? false);
             const resolvedCat = isPkg ? "paquetes" : rawCat;
+            const resolvedImage =
+              ov?.image_url?.trim() || item.image_url || null;
             return {
               ...item,
               ...ov,
+              image_url: resolvedImage,
               category: resolvedCat,
               item_type: isPkg ? "paquete" : item.item_type || "individual",
               package_components:
@@ -458,7 +469,9 @@ export async function updateItemDetailsInDb(
       payload.replacement_price = updates.replacement_price;
     if (updates.total_stock !== undefined)
       payload.total_stock = updates.total_stock;
-    if (updates.image_url !== undefined) payload.image_url = updates.image_url;
+    if (updates.image_url !== undefined && updates.image_url !== "") {
+      payload.image_url = updates.image_url;
+    }
     if (updates.fabric !== undefined) payload.fabric = updates.fabric;
     if (updates.capacity_people !== undefined)
       payload.capacity_people = updates.capacity_people;
