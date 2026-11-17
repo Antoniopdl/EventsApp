@@ -148,6 +148,23 @@ export function DesktopLayout({
               );
             })}
           </nav>
+
+          {/* Acceso Directo al Catálogo de Manteles para Clientes */}
+          <a
+            href="/catalogo"
+            target="_blank"
+            rel="noreferrer"
+            className="flex w-full items-center justify-between rounded-2xl border border-purple-200 bg-purple-50/70 px-3.5 py-2.5 text-xs font-bold text-purple-900 hover:bg-purple-100 transition-all active:scale-98"
+            title="Abrir catálogo público de manteles para compartir con clientes"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-sm">🎨</span>
+              <span>Catálogo Clientes</span>
+            </div>
+            <span className="text-[10px] font-extrabold text-purple-700 bg-purple-200/60 px-1.5 py-0.5 rounded-md">
+              Link ↗
+            </span>
+          </a>
         </div>
 
         {/* Zona Inferior: Botón de Alternar a Vista Móvil y Perfil */}

@@ -1,9 +1,24 @@
 "use client";
 
-import { Boxes, Edit2, Package, Plus, Search, Tag, Trash2 } from "lucide-react";
+import {
+  Boxes,
+  Camera,
+  Edit2,
+  Package,
+  Palette,
+  Plus,
+  Search,
+  Tag,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
-import type { Category, InventoryItem } from "@/core/domain/inventory";
+import {
+  type Category,
+  type InventoryItem,
+  getTableCompatibilityLabel,
+} from "@/core/domain/inventory";
 import { formatCurrency } from "@/lib/utils";
+import { TableclothCatalogModal } from "../inventory/TableclothCatalogModal";
 
 interface DesktopInventoryManagerProps {
   items: InventoryItem[];
@@ -112,6 +127,7 @@ export function DesktopInventoryManager({
     "all" | "individual" | "paquete"
   >("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showTableclothCatalog, setShowTableclothCatalog] = useState(false);
 
   // Edición rápida en celda
   const [editingCell, setEditingCell] = useState<{
@@ -218,8 +234,17 @@ export function DesktopInventoryManager({
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setShowTableclothCatalog(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-purple-300 bg-purple-50 px-3.5 py-2 text-xs font-bold text-purple-900 shadow-xs hover:bg-purple-100 active:scale-95 transition-all cursor-pointer"
+            title="Muestrario de manteles para compartir fotos con clientes"
+          >
+            <Palette className="h-4 w-4 text-purple-700" />
+            <span>🎨 Muestrario de Manteles</span>
+          </button>
+          <button
+            type="button"
             onClick={onOpenCategoryManager}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 active:scale-95 transition-all"
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 active:scale-95 transition-all cursor-pointer"
           >
             <Tag className="h-4 w-4 text-slate-500" />
             <span>Gestionar Categorías</span>
@@ -454,12 +479,24 @@ export function DesktopInventoryManager({
                             ) : null}
                           </div>
                         ) : (
-                          <div className="space-y-0.5">
-                            {item.fabric && (
-                              <span className="inline-block rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
-                                Tela: {item.fabric}
-                              </span>
-                            )}
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-1">
+                              {item.fabric && (
+                                <span className="inline-block rounded-md bg-purple-50 border border-purple-200 px-1.5 py-0.5 text-[10px] font-bold text-purple-800">
+                                  Tela: {item.fabric}
+                                </span>
+                              )}
+                              {(() => {
+                                const compatLabel =
+                                  getTableCompatibilityLabel(item);
+                                if (!compatLabel) return null;
+                                return (
+                                  <span className="inline-block rounded-md bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[9px] font-bold text-blue-900">
+                                    {compatLabel}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                             {item.variants && item.variants.length > 0 && (
                               <div className="flex items-center gap-1">
                                 <span className="text-[10px] text-slate-500">
@@ -483,6 +520,15 @@ export function DesktopInventoryManager({
                                     </span>
                                   )}
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowTableclothCatalog(true)}
+                                  className="text-[10px] font-bold text-purple-700 hover:text-purple-900 hover:underline flex items-center gap-0.5 ml-1 cursor-pointer"
+                                  title="Ver fotos de colores en el muestrario"
+                                >
+                                  <Camera className="h-3 w-3" />
+                                  <span>Fotos</span>
+                                </button>
                               </div>
                             )}
                           </div>
@@ -656,6 +702,13 @@ export function DesktopInventoryManager({
             </div>
           </div>
         </div>
+      )}
+      {showTableclothCatalog && (
+        <TableclothCatalogModal
+          items={items}
+          onClose={() => setShowTableclothCatalog(false)}
+          onNotification={onNotification}
+        />
       )}
     </div>
   );

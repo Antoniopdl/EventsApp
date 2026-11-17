@@ -6,6 +6,8 @@ import {
   type Category,
   type InventoryItem,
   isTableclothCategory,
+  type TableShapeCompatibility,
+  type TableclothSize,
 } from "@/core/domain/inventory";
 import {
   addCustomFabric,
@@ -13,6 +15,8 @@ import {
 } from "@/infrastructure/supabase/category-repository";
 import { createLooseItemInDb } from "@/infrastructure/supabase/inventory-repository";
 import { EditPhotoModal } from "./EditPhotoModal";
+import { FabricColorSelector } from "./FabricColorSelector";
+import { VariantPhotosModal } from "./VariantPhotosModal";
 
 interface CreateLooseItemModalProps {
   categories: Category[];
@@ -24,7 +28,10 @@ interface CreateLooseItemModalProps {
 interface DraftVariant {
   color_name: string;
   color_hex: string;
+  fabric?: string;
   total_stock: number;
+  images?: string[];
+  image_url?: string | null;
 }
 
 const COLOR_SWATCHES = [
@@ -61,11 +68,19 @@ export function CreateLooseItemModal({
   const [newFabricInput, setNewFabricInput] = useState("");
   const [showAddFabric, setShowAddFabric] = useState(false);
 
+  // Compatibilidad con Mesas (Manteles y Sobremanteles)
+  const [tableShape, setTableShape] =
+    useState<TableShapeCompatibility>("redonda");
+  const [tableclothSize, setTableclothSize] =
+    useState<TableclothSize>("estandar");
+
   // Variantes de Color
   const [variants, setVariants] = useState<DraftVariant[]>([]);
   const [newColorName, setNewColorName] = useState("Blanco");
   const [newColorHex, setNewColorHex] = useState("#f8fafc");
   const [newColorStock, setNewColorStock] = useState(15);
+  const [editingPhotosVariant, setEditingPhotosVariant] =
+    useState<DraftVariant | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const showFabricAndColors = isTableclothCategory(category);
@@ -133,6 +148,15 @@ export function CreateLooseItemModal({
         ? finalVariants.reduce((acc, v) => acc + v.total_stock, 0)
         : totalStock;
 
+    const compatibleTables =
+      category === "manteles_base"
+        ? [tableShape]
+        : category === "sobremanteles"
+          ? tableclothSize === "chico"
+            ? ["redonda", "cuadrada_chica"]
+            : ["cuadrada_grande"]
+          : undefined;
+
     setIsSubmitting(true);
     const created = await createLooseItemInDb({
       name: name.trim(),
@@ -141,6 +165,10 @@ export function CreateLooseItemModal({
       replacement_price: replacementPrice,
       total_stock: calculatedStock,
       fabric: showFabricAndColors ? selectedFabric : null,
+      table_shape: category === "manteles_base" ? tableShape : null,
+      tablecloth_size:
+        category === "sobremanteles" ? tableclothSize : "estandar",
+      compatible_tables: compatibleTables,
       image_url: imageUrl,
       variants:
         showFabricAndColors && finalVariants.length > 0
@@ -239,90 +267,211 @@ export function CreateLooseItemModal({
               </select>
             </div>
 
-            {/* Campo Tela (SOLO cuando es Mantel Base o Sobremantel) */}
-            {showFabricAndColors && (
-              <div className="rounded-2xl border border-purple-200 bg-purple-50/50 p-3 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="loose-fabric"
-                    className="text-xs font-bold text-purple-950"
-                  >
-                    Tipo de Tela (Mantelería)
-                  </label>
+            {/* Compatibilidad de Mesas (Manteles Base y Sobremanteles) */}
+            {category === "manteles_base" && (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-3 space-y-2">
+                <label className="text-xs font-bold text-blue-950 block">
+                  ¿Para qué forma de mesa está confeccionado este mantel base?
+                </label>
+                <div className="grid grid-cols-2 gap-2 text-xs font-bold">
                   <button
                     type="button"
-                    onClick={() => setShowAddFabric((prev) => !prev)}
-                    className="text-[11px] font-bold text-purple-700 hover:underline flex items-center gap-0.5"
+                    onClick={() => setTableShape("redonda")}
+                    className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                      tableShape === "redonda"
+                        ? "border-blue-600 bg-white text-blue-900 ring-2 ring-blue-500/30 shadow-xs"
+                        : "border-slate-200 bg-white/70 text-slate-600 hover:bg-white"
+                    }`}
                   >
-                    <Plus className="h-3 w-3" />
-                    <span>{showAddFabric ? "Cerrar" : "Agregar Tela"}</span>
+                    <span className="text-lg">🔘</span>
+                    <div>
+                      <p className="leading-tight font-extrabold">Mesa Redonda</p>
+                      <p className="text-[10px] font-medium text-slate-500">
+                        10 personas (Banquete)
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTableShape("cuadrada")}
+                    className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                      tableShape === "cuadrada"
+                        ? "border-blue-600 bg-white text-blue-900 ring-2 ring-blue-500/30 shadow-xs"
+                        : "border-slate-200 bg-white/70 text-slate-600 hover:bg-white"
+                    }`}
+                  >
+                    <span className="text-lg">⬛</span>
+                    <div>
+                      <p className="leading-tight font-extrabold">Mesa Cuadrada</p>
+                      <p className="text-[10px] font-medium text-slate-500">
+                        Cuadrada / Imperial
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTableShape("tablon")}
+                    className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                      tableShape === "tablon"
+                        ? "border-blue-600 bg-white text-blue-900 ring-2 ring-blue-500/30 shadow-xs"
+                        : "border-slate-200 bg-white/70 text-slate-600 hover:bg-white"
+                    }`}
+                  >
+                    <span className="text-lg">📏</span>
+                    <div>
+                      <p className="leading-tight font-extrabold">Mesa Tablón</p>
+                      <p className="text-[10px] font-medium text-slate-500">
+                        Rectangular alargada
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTableShape("todas")}
+                    className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                      tableShape === "todas"
+                        ? "border-blue-600 bg-white text-blue-900 ring-2 ring-blue-500/30 shadow-xs"
+                        : "border-slate-200 bg-white/70 text-slate-600 hover:bg-white"
+                    }`}
+                  >
+                    <span className="text-lg">🌐</span>
+                    <div>
+                      <p className="leading-tight font-extrabold">Universal</p>
+                      <p className="text-[10px] font-medium text-slate-500">
+                        Todas las formas
+                      </p>
+                    </div>
                   </button>
                 </div>
+              </div>
+            )}
 
-                {showAddFabric ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newFabricInput}
-                      onChange={(e) => setNewFabricInput(e.target.value)}
-                      placeholder="Ej. Tafetán, Raso, Poliéster..."
-                      className="flex-1 rounded-xl border border-purple-300 bg-white px-3 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-purple-500"
-                    />
+            {category === "sobremanteles" && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-3 space-y-2">
+                <label className="text-xs font-bold text-amber-950 block">
+                  Tamaño y compatibilidad del sobremantel
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setTableclothSize("chico")}
+                    className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                      tableclothSize === "chico"
+                        ? "border-amber-600 bg-white text-amber-900 ring-2 ring-amber-500/30 shadow-xs"
+                        : "border-slate-200 bg-white/70 text-slate-600 hover:bg-white"
+                    }`}
+                  >
+                    <span className="text-xl">🟡</span>
+                    <div>
+                      <p className="leading-tight font-extrabold">
+                        Sobremantel Chico
+                      </p>
+                      <p className="text-[10px] font-semibold text-emerald-700 mt-0.5">
+                        ✓ Solo mesas redondas y cuadradas chicas
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTableclothSize("grande")}
+                    className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                      tableclothSize === "grande"
+                        ? "border-amber-600 bg-white text-amber-900 ring-2 ring-amber-500/30 shadow-xs"
+                        : "border-slate-200 bg-white/70 text-slate-600 hover:bg-white"
+                    }`}
+                  >
+                    <span className="text-xl">🔲</span>
+                    <div>
+                      <p className="leading-tight font-extrabold">
+                        Sobremantel Grande
+                      </p>
+                      <p className="text-[10px] font-semibold text-purple-700 mt-0.5">
+                        ✓ Solo mesas cuadradas grandes (Imperial)
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Campo Tela y Muestrario de Colores */}
+            {showFabricAndColors && (
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-purple-200 bg-purple-50/50 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="loose-fabric"
+                      className="text-xs font-bold text-purple-950"
+                    >
+                      Tipo de Tela (Mantelería)
+                    </label>
                     <button
                       type="button"
-                      onClick={handleAddFabric}
-                      className="rounded-xl bg-purple-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-purple-800"
+                      onClick={() => setShowAddFabric((prev) => !prev)}
+                      className="text-[11px] font-bold text-purple-700 hover:underline flex items-center gap-0.5"
                     >
-                      Guardar
+                      <Plus className="h-3 w-3" />
+                      <span>{showAddFabric ? "Cerrar" : "Agregar Tela"}</span>
                     </button>
                   </div>
-                ) : (
-                  <select
-                    id="loose-fabric"
-                    value={selectedFabric}
-                    onChange={(e) => setSelectedFabric(e.target.value)}
-                    className="w-full rounded-xl border border-purple-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    {fabrics.map((f) => (
-                      <option key={f} value={f}>
-                        Tela {f}
-                      </option>
-                    ))}
-                  </select>
-                )}
 
-                {/* Variaciones de Color */}
-                <div className="pt-2 border-t border-purple-200/70 space-y-2">
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-purple-950">
-                    <Palette className="h-3.5 w-3.5" />
-                    Variaciones de Color (Opcional)
-                  </span>
-
-                  <div className="flex flex-wrap gap-1">
-                    {COLOR_SWATCHES.map((sw) => (
+                  {showAddFabric ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newFabricInput}
+                        onChange={(e) => setNewFabricInput(e.target.value)}
+                        placeholder="Ej. Tafetán, Raso, Poliéster..."
+                        className="flex-1 rounded-xl border border-purple-300 bg-white px-3 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-purple-500"
+                      />
                       <button
-                        key={sw.name}
                         type="button"
-                        onClick={() => {
-                          setNewColorName(sw.name);
-                          setNewColorHex(sw.hex);
-                        }}
-                        className={`flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-semibold ${
-                          newColorName === sw.name
-                            ? "border-purple-600 bg-white ring-1 ring-purple-500"
-                            : "border-slate-200 bg-white/80"
-                        }`}
+                        onClick={handleAddFabric}
+                        className="rounded-xl bg-purple-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-purple-800"
                       >
-                        <span
-                          className="h-2.5 w-2.5 rounded-full border border-slate-300"
-                          style={{ backgroundColor: sw.hex }}
-                        />
-                        {sw.name}
+                        Guardar
                       </button>
-                    ))}
-                  </div>
+                    </div>
+                  ) : (
+                    <select
+                      id="loose-fabric"
+                      value={selectedFabric}
+                      onChange={(e) => setSelectedFabric(e.target.value)}
+                      className="w-full rounded-xl border border-purple-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      {fabrics.map((f) => (
+                        <option key={f} value={f}>
+                          Tela {f}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
 
+                {/* Desplegable automático del Muestrario de Colores con Texturas y Caídas */}
+                <FabricColorSelector
+                  fabric={selectedFabric}
+                  selectedVariants={variants as any}
+                  onChangeVariants={(vars) => setVariants(vars as any)}
+                />
+
+                {/* Opción adicional para agregar color personalizado fuera de catálogo */}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                  <span className="text-[11px] font-bold text-slate-700 block">
+                    ¿Tienes un color nuevo que no viene en el catálogo de{" "}
+                    {selectedFabric}?
+                  </span>
                   <div className="flex gap-1.5 items-center">
+                    <input
+                      type="color"
+                      value={newColorHex}
+                      onChange={(e) => setNewColorHex(e.target.value)}
+                      className="h-8 w-8 rounded-lg border border-slate-300 cursor-pointer shrink-0"
+                    />
                     <input
                       type="text"
                       value={newColorName}
@@ -334,23 +483,16 @@ export function CreateLooseItemModal({
                           handleAddVariant();
                         }
                       }}
-                      placeholder="Nombre color (ej. Palo de Rosa)"
-                      className="flex-1 rounded-xl border border-purple-300 bg-white px-2.5 py-1.5 text-xs font-semibold outline-none"
+                      placeholder="Nombre color nuevo (ej. Perla)"
+                      className="flex-1 rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold outline-none focus:ring-1 focus:ring-purple-500"
                     />
                     <input
                       type="number"
                       min={0}
                       value={newColorStock}
                       onChange={(e) => setNewColorStock(Number(e.target.value))}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleAddVariant();
-                        }
-                      }}
-                      className="w-16 rounded-xl border border-purple-300 bg-white px-2 py-1.5 text-xs font-bold text-center outline-none"
-                      title="Cantidad de este color"
+                      className="w-14 rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-center outline-none"
+                      title="Existencias de este color"
                     />
                     <button
                       type="button"
@@ -360,37 +502,6 @@ export function CreateLooseItemModal({
                       + Color
                     </button>
                   </div>
-
-                  {variants.length > 0 && (
-                    <div className="space-y-1 pt-1">
-                      {variants.map((v) => (
-                        <div
-                          key={v.color_name}
-                          className="flex items-center justify-between rounded-xl bg-white border border-purple-200 px-2.5 py-1 text-xs"
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className="h-3 w-3 rounded-full border border-slate-300"
-                              style={{ backgroundColor: v.color_hex }}
-                            />
-                            <span className="font-bold text-slate-800">
-                              {v.color_name}
-                            </span>
-                            <span className="text-slate-500">
-                              ({v.total_stock} pzas)
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveVariant(v.color_name)}
-                            className="text-rose-500 hover:text-rose-700"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -475,6 +586,37 @@ export function CreateLooseItemModal({
           currentImageUrl={imageUrl}
           onSavePhoto={(newUrl) => setImageUrl(newUrl)}
           onClose={() => setShowPhotoPicker(false)}
+        />
+      )}
+
+      {/* Modal de fotos para variante en borrador */}
+      {editingPhotosVariant && (
+        <VariantPhotosModal
+          colorName={editingPhotosVariant.color_name}
+          colorHex={editingPhotosVariant.color_hex}
+          fabricName={selectedFabric}
+          itemName={name || "Nuevo Mantel"}
+          initialImages={editingPhotosVariant.images || []}
+          initialPrimaryUrl={editingPhotosVariant.image_url}
+          onSave={(imgs, primary) => {
+            setVariants((prev) =>
+              prev.map((v) =>
+                v.color_name === editingPhotosVariant.color_name
+                  ? {
+                      ...v,
+                      images: imgs,
+                      image_url: primary || imgs[0] || null,
+                      fabric: selectedFabric,
+                    }
+                  : v,
+              ),
+            );
+            setEditingPhotosVariant(null);
+            onNotification(
+              `Fotos agregadas al color "${editingPhotosVariant.color_name}".`,
+            );
+          }}
+          onClose={() => setEditingPhotosVariant(null)}
         />
       )}
     </>

@@ -1,8 +1,13 @@
-import type {
-  InventoryItem,
-  InventoryVariant,
-  PackageComponent,
+import {
+  type InventoryItem,
+  type InventoryVariant,
+  type PackageComponent,
+  isTableclothCategory,
 } from "@/core/domain/inventory";
+import {
+  findColorByFabricAndName,
+  getPresetPhotosForFabricAndColor,
+} from "@/core/domain/fabric-catalog";
 import { INITIAL_INVENTORY_SEED } from "@/core/use-cases/inventory";
 import { isSupabaseConfigured, supabase } from "./client";
 
@@ -200,15 +205,30 @@ async function seedInitialInventoryToSupabase(): Promise<
       if (realId) {
         seedIdToUuid.set(seed.id, realId);
         if (seed.variants && seed.variants.length > 0) {
-          await supabase.from("inventory_item_variants").upsert(
-            seed.variants.map((v) => ({
-              item_id: realId,
-              color_name: v.color_name,
-              color_hex: v.color_hex || "#2563eb",
-              total_stock: v.total_stock,
-            })),
-            { onConflict: "item_id,color_name" },
-          );
+          try {
+            await supabase.from("inventory_item_variants").upsert(
+              seed.variants.map((v) => ({
+                item_id: realId,
+                color_name: v.color_name,
+                color_hex: v.color_hex || "#2563eb",
+                total_stock: v.total_stock,
+                ...(v.fabric ? { fabric: v.fabric } : {}),
+                ...(v.image_url ? { image_url: v.image_url } : {}),
+                ...(v.images && v.images.length > 0 ? { images: v.images } : {}),
+              })),
+              { onConflict: "item_id,color_name" },
+            );
+          } catch {
+            await supabase.from("inventory_item_variants").upsert(
+              seed.variants.map((v) => ({
+                item_id: realId,
+                color_name: v.color_name,
+                color_hex: v.color_hex || "#2563eb",
+                total_stock: v.total_stock,
+              })),
+              { onConflict: "item_id,color_name" },
+            );
+          }
         }
       }
     }
@@ -284,6 +304,135 @@ export function getLastSupabaseError(): string | null {
   return lastSupabaseError;
 }
 
+function enrichInventoryItem(
+  item: InventoryItem,
+  overrides: Record<string, Partial<InventoryItem>>,
+  localPkgMap: Map<string, InventoryItem>,
+): InventoryItem {
+  const ov = overrides[item.id];
+  const localPkg = localPkgMap.get(item.id);
+  const rawCat = ov?.category || normalizeCategoryFromDb(item);
+  const isPkg =
+    rawCat === "paquetes" ||
+    item.item_type === "paquete" ||
+    (item.sku?.startsWith("PAQ-") ?? false);
+  const resolvedCat = isPkg ? "paquetes" : rawCat;
+  const isTablecloth = isTableclothCategory(resolvedCat);
+
+  // Match corresponding seed item by sku or name
+  const seedMatch = INITIAL_INVENTORY_SEED.find(
+    (s) =>
+      s.sku === item.sku ||
+      s.name.toLowerCase() === item.name.toLowerCase() ||
+      (isTablecloth &&
+        s.category === resolvedCat &&
+        s.name.toLowerCase().includes("redond") ===
+          item.name.toLowerCase().includes("redond")),
+  );
+
+  let itemFabric = item.fabric || ov?.fabric || seedMatch?.fabric;
+  if (!itemFabric && isTablecloth) {
+    const lower = item.name.toLowerCase();
+    itemFabric = lower.includes("kim")
+      ? "Razo Kim"
+      : lower.includes("tafeta")
+        ? "Tafeta"
+        : "Tergal";
+  }
+
+  let variants =
+    item.variants && item.variants.length > 0
+      ? item.variants
+      : seedMatch?.variants;
+
+  if (isTablecloth && variants && variants.length > 0) {
+    variants = variants.map((v) => {
+      const vFabric = v.fabric || itemFabric || "Tergal";
+      const preset = getPresetPhotosForFabricAndColor(vFabric, v.color_name);
+      const masterCol = findColorByFabricAndName(vFabric, v.color_name);
+
+      let vImages = v.images && v.images.length > 0 ? v.images : [];
+      if (
+        vImages.length === 0 ||
+        vImages.some((u) => u.includes("unsplash.com"))
+      ) {
+        vImages =
+          preset?.all ||
+          seedMatch?.variants?.find(
+            (sv) => sv.color_name.toLowerCase() === v.color_name.toLowerCase(),
+          )?.images ||
+          [];
+      }
+
+      let vImg = v.image_url;
+      if (!vImg || vImg.includes("unsplash.com")) {
+        vImg = preset?.texture || vImages[0] || null;
+      }
+
+      return {
+        ...v,
+        fabric: vFabric,
+        color_hex: v.color_hex || masterCol?.color_hex || "#2563eb",
+        image_url: vImg,
+        images: vImages,
+      };
+    });
+  }
+
+  let resolvedImage = ov?.image_url?.trim() || item.image_url || null;
+  if (
+    isTablecloth &&
+    (!resolvedImage || resolvedImage.includes("unsplash.com"))
+  ) {
+    resolvedImage =
+      variants?.[0]?.images?.[1] ||
+      variants?.[0]?.images?.[0] ||
+      seedMatch?.image_url ||
+      "/telas/tergal azul rey 2.jpg";
+  }
+
+  const tableShape =
+    item.table_shape ||
+    ov?.table_shape ||
+    seedMatch?.table_shape ||
+    (item.name.toLowerCase().includes("redond")
+      ? "redonda"
+      : item.name.toLowerCase().includes("cuad")
+        ? "cuadrada"
+        : undefined);
+
+  const tableclothSize =
+    item.tablecloth_size ||
+    ov?.tablecloth_size ||
+    seedMatch?.tablecloth_size ||
+    (item.name.toLowerCase().includes("grande") ? "grande" : "estandar");
+
+  const compatibleTables =
+    item.compatible_tables ||
+    ov?.compatible_tables ||
+    seedMatch?.compatible_tables ||
+    (tableShape ? [tableShape] : undefined);
+
+  return {
+    ...item,
+    ...ov,
+    image_url: resolvedImage,
+    category: resolvedCat,
+    fabric: itemFabric,
+    table_shape: tableShape,
+    tablecloth_size: tableclothSize,
+    compatible_tables: compatibleTables,
+    item_type: isPkg ? "paquete" : item.item_type || "individual",
+    variants: variants || item.variants,
+    package_components:
+      item.package_components && item.package_components.length > 0
+        ? item.package_components
+        : ov?.package_components ||
+          localPkg?.package_components ||
+          item.package_components,
+  };
+}
+
 /**
  * Obtiene el inventario activo de Supabase con sus variantes de color y componentes de paquetes.
  * Si Supabase está conectado, Supabase es la fuente de verdad compartida entre dispositivos.
@@ -305,31 +454,9 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
           const overrides = getLocalItemOverrides();
           const localPkgs = getLocalPackages();
           const localPkgMap = new Map(localPkgs.map((p) => [p.id, p]));
-          const mapped = (data as InventoryItem[]).map((item) => {
-            const ov = overrides[item.id];
-            const localPkg = localPkgMap.get(item.id);
-            const rawCat = ov?.category || normalizeCategoryFromDb(item);
-            const isPkg =
-              rawCat === "paquetes" ||
-              item.item_type === "paquete" ||
-              (item.sku?.startsWith("PAQ-") ?? false);
-            const resolvedCat = isPkg ? "paquetes" : rawCat;
-            const resolvedImage =
-              ov?.image_url?.trim() || item.image_url || null;
-            return {
-              ...item,
-              ...ov,
-              image_url: resolvedImage,
-              category: resolvedCat,
-              item_type: isPkg ? "paquete" : item.item_type || "individual",
-              package_components:
-                item.package_components && item.package_components.length > 0
-                  ? item.package_components
-                  : ov?.package_components ||
-                    localPkg?.package_components ||
-                    item.package_components,
-            };
-          });
+          const mapped = (data as InventoryItem[]).map((item) =>
+            enrichInventoryItem(item, overrides, localPkgMap),
+          );
           return mapped;
         }
         const seeded = await seedInitialInventoryToSupabase();
@@ -349,29 +476,9 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
           const overrides = getLocalItemOverrides();
           const localPkgs = getLocalPackages();
           const localPkgMap = new Map(localPkgs.map((p) => [p.id, p]));
-          const mapped = (simpleData as InventoryItem[]).map((item) => {
-            const ov = overrides[item.id];
-            const localPkg = localPkgMap.get(item.id);
-            const rawCat = ov?.category || normalizeCategoryFromDb(item);
-            const isPkg =
-              rawCat === "paquetes" ||
-              item.item_type === "paquete" ||
-              (item.sku?.startsWith("PAQ-") ?? false);
-            const resolvedCat = isPkg ? "paquetes" : rawCat;
-            const resolvedImage =
-              ov?.image_url?.trim() || item.image_url || null;
-            return {
-              ...item,
-              ...ov,
-              image_url: resolvedImage,
-              category: resolvedCat,
-              item_type: isPkg ? "paquete" : item.item_type || "individual",
-              package_components:
-                ov?.package_components ||
-                localPkg?.package_components ||
-                item.package_components,
-            };
-          });
+          const mapped = (simpleData as InventoryItem[]).map((item) =>
+            enrichInventoryItem(item, overrides, localPkgMap),
+          );
           return mapped;
         }
       }
@@ -473,6 +580,12 @@ export async function updateItemDetailsInDb(
       payload.image_url = updates.image_url;
     }
     if (updates.fabric !== undefined) payload.fabric = updates.fabric;
+    if (updates.table_shape !== undefined)
+      payload.table_shape = updates.table_shape;
+    if (updates.tablecloth_size !== undefined)
+      payload.tablecloth_size = updates.tablecloth_size;
+    if (updates.compatible_tables !== undefined)
+      payload.compatible_tables = updates.compatible_tables;
     if (updates.capacity_people !== undefined)
       payload.capacity_people = updates.capacity_people;
     if (updates.description !== undefined)
@@ -512,14 +625,30 @@ export async function updateItemDetailsInDb(
             .delete()
             .eq("item_id", id);
           if (updates.variants.length > 0) {
-            await supabase.from("inventory_item_variants").insert(
-              updates.variants.map((v) => ({
-                item_id: id,
-                color_name: v.color_name,
-                color_hex: v.color_hex || "#2563eb",
-                total_stock: v.total_stock,
-              })),
-            );
+            const richRows = updates.variants.map((v) => ({
+              item_id: id,
+              color_name: v.color_name,
+              color_hex: v.color_hex || "#2563eb",
+              total_stock: v.total_stock,
+              ...(v.fabric ? { fabric: v.fabric } : {}),
+              ...(v.image_url ? { image_url: v.image_url } : {}),
+              ...(v.images && v.images.length > 0 ? { images: v.images } : {}),
+            }));
+            const { error: insErr } = await supabase
+              .from("inventory_item_variants")
+              .insert(richRows);
+
+            if (insErr) {
+              // Si la BD aún no tiene las nuevas columnas de la migración 00007
+              await supabase.from("inventory_item_variants").insert(
+                updates.variants.map((v) => ({
+                  item_id: id,
+                  color_name: v.color_name,
+                  color_hex: v.color_hex || "#2563eb",
+                  total_stock: v.total_stock,
+                })),
+              );
+            }
           }
         } catch (vErr) {
           console.warn("Error sincronizando variantes:", vErr);
@@ -596,14 +725,29 @@ export async function updateItemDetailsInDb(
           .delete()
           .eq("item_id", realId);
         if (updates.variants.length > 0) {
-          await supabase.from("inventory_item_variants").insert(
-            updates.variants.map((v) => ({
-              item_id: realId,
-              color_name: v.color_name,
-              color_hex: v.color_hex || "#2563eb",
-              total_stock: v.total_stock,
-            })),
-          );
+          const richRows = updates.variants.map((v) => ({
+            item_id: realId,
+            color_name: v.color_name,
+            color_hex: v.color_hex || "#2563eb",
+            total_stock: v.total_stock,
+            ...(v.fabric ? { fabric: v.fabric } : {}),
+            ...(v.image_url ? { image_url: v.image_url } : {}),
+            ...(v.images && v.images.length > 0 ? { images: v.images } : {}),
+          }));
+          const { error: insErr } = await supabase
+            .from("inventory_item_variants")
+            .insert(richRows);
+
+          if (insErr) {
+            await supabase.from("inventory_item_variants").insert(
+              updates.variants.map((v) => ({
+                item_id: realId,
+                color_name: v.color_name,
+                color_hex: v.color_hex || "#2563eb",
+                total_stock: v.total_stock,
+              })),
+            );
+          }
         }
       } catch (vErr) {
         console.warn("Error en variantes upserted:", vErr);
@@ -630,6 +774,9 @@ export async function createLooseItemInDb(input: {
   replacement_price: number;
   total_stock: number;
   fabric?: string | null;
+  table_shape?: string | null;
+  tablecloth_size?: string | null;
+  compatible_tables?: string[] | null;
   image_url?: string | null;
   variants?: Omit<InventoryVariant, "id" | "item_id">[];
 }): Promise<InventoryItem> {
@@ -643,7 +790,10 @@ export async function createLooseItemInDb(input: {
           item_id: itemId,
           color_name: v.color_name,
           color_hex: v.color_hex || "#2563eb",
+          fabric: v.fabric || input.fabric || null,
           total_stock: v.total_stock,
+          images: v.images || [],
+          image_url: v.image_url || v.images?.[0] || null,
         }))
       : undefined;
 
@@ -659,6 +809,9 @@ export async function createLooseItemInDb(input: {
     category: input.category,
     item_type: "individual",
     fabric: input.fabric || null,
+    table_shape: (input.table_shape as any) || null,
+    tablecloth_size: (input.tablecloth_size as any) || null,
+    compatible_tables: input.compatible_tables || null,
     rental_price: input.rental_price,
     replacement_price: input.replacement_price,
     total_stock: totalStock,
@@ -725,14 +878,29 @@ export async function createLooseItemInDb(input: {
       if (!error && created) {
         newItem.id = created.id;
         if (mappedVariants && mappedVariants.length > 0) {
-          await supabase.from("inventory_item_variants").insert(
-            mappedVariants.map((v) => ({
-              item_id: created.id,
-              color_name: v.color_name,
-              color_hex: v.color_hex,
-              total_stock: v.total_stock,
-            })),
-          );
+          const richRows = mappedVariants.map((v) => ({
+            item_id: created.id,
+            color_name: v.color_name,
+            color_hex: v.color_hex,
+            total_stock: v.total_stock,
+            ...(v.fabric ? { fabric: v.fabric } : {}),
+            ...(v.image_url ? { image_url: v.image_url } : {}),
+            ...(v.images && v.images.length > 0 ? { images: v.images } : {}),
+          }));
+          const { error: insErr } = await supabase
+            .from("inventory_item_variants")
+            .insert(richRows);
+
+          if (insErr) {
+            await supabase.from("inventory_item_variants").insert(
+              mappedVariants.map((v) => ({
+                item_id: created.id,
+                color_name: v.color_name,
+                color_hex: v.color_hex,
+                total_stock: v.total_stock,
+              })),
+            );
+          }
         }
         saveLocalItemOverride(created.id, {
           category: input.category,

@@ -103,8 +103,11 @@ export interface InventoryVariant {
   item_id: string;
   color_name: string;
   color_hex?: string | null;
+  fabric?: string | null;
   total_stock: number;
   rental_price_override?: number | null;
+  images?: string[];
+  image_url?: string | null;
 }
 
 export interface PackageComponent {
@@ -117,6 +120,37 @@ export interface PackageComponent {
   component_item?: InventoryItem;
 }
 
+export type TableShapeCompatibility =
+  | "redonda"
+  | "cuadrada"
+  | "tablon"
+  | "todas";
+
+export type TableclothSize = "estandar" | "chico" | "grande";
+
+export function getTableCompatibilityLabel(item: {
+  category?: string;
+  table_shape?: string | null;
+  tablecloth_size?: string | null;
+}): string {
+  const cat = (item.category || "").toLowerCase();
+  if (cat === "sobremanteles" || cat.includes("sobremantel")) {
+    if (item.tablecloth_size === "chico") {
+      return "Sobremantel Chico (Mesas redondas y cuadradas chicas)";
+    }
+    if (item.tablecloth_size === "grande") {
+      return "Sobremantel Grande (Solo mesas cuadradas grandes)";
+    }
+    return "Sobremantel Estándar";
+  }
+
+  if (item.table_shape === "redonda") return "Para Mesas Redondas";
+  if (item.table_shape === "cuadrada") return "Para Mesas Cuadradas";
+  if (item.table_shape === "tablon") return "Para Mesas Tablón / Rectangular";
+  if (item.table_shape === "todas") return "Universal / Todas las mesas";
+  return "";
+}
+
 export interface InventoryItem {
   id: string;
   sku: string;
@@ -124,6 +158,9 @@ export interface InventoryItem {
   category: FurnitureCategory;
   item_type?: InventoryItemType;
   fabric?: string | null;
+  table_shape?: TableShapeCompatibility | null;
+  tablecloth_size?: TableclothSize | null;
+  compatible_tables?: string[] | null;
   capacity_people?: number | null;
   description?: string | null;
   total_stock: number;

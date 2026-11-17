@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   Package,
   PackagePlus,
+  Palette,
   Plus,
   Search,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { CreateLooseItemModal } from "./CreateLooseItemModal";
 import { CreatePackageModal } from "./CreatePackageModal";
 import { EditProductModal } from "./EditProductModal";
 import { InventoryCard } from "./InventoryCard";
+import { TableclothCatalogModal } from "./TableclothCatalogModal";
 
 interface InventoryGridProps {
   items: InventoryItem[];
@@ -57,6 +59,7 @@ export function InventoryGrid({
   const [editingProduct, setEditingProduct] = useState<InventoryItem | null>(
     null,
   );
+  const [showTableclothCatalog, setShowTableclothCatalog] = useState(false);
 
   useEffect(() => {
     setCategories(getCategories());
@@ -174,6 +177,30 @@ export function InventoryGrid({
         )}
       </div>
 
+      {/* Botón Acceso Rápido al Muestrario de Manteles para Clientes */}
+      <button
+        type="button"
+        onClick={() => setShowTableclothCatalog(true)}
+        className="flex w-full items-center justify-between rounded-2xl border border-purple-200 bg-purple-50/80 p-2.5 text-xs font-bold text-purple-900 shadow-2xs hover:bg-purple-100 transition-all active:scale-98 cursor-pointer"
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-600 text-white shadow-xs">
+            <Palette className="h-4 w-4" />
+          </div>
+          <div className="text-left">
+            <span className="block text-xs font-black text-purple-950 leading-tight">
+              🎨 Muestrario de Manteles (Para Clientes)
+            </span>
+            <span className="block text-[10px] font-medium text-purple-700/90">
+              Fotos por color y tela listas para enviar por WhatsApp
+            </span>
+          </div>
+        </div>
+        <span className="rounded-lg bg-purple-200/80 px-2 py-0.5 text-[10px] font-extrabold text-purple-800">
+          Abrir ↗
+        </span>
+      </button>
+
       {/* Banner discreto cuando el modo edición está activo */}
       {isEditMode && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 font-medium flex items-center justify-between animate-in fade-in">
@@ -286,6 +313,14 @@ export function InventoryGrid({
           categories={categories}
           onSave={onUpdateDetails}
           onClose={() => setEditingProduct(null)}
+          onNotification={notify}
+        />
+      )}
+      {/* Modal Muestrario de Manteles para Clientes */}
+      {showTableclothCatalog && (
+        <TableclothCatalogModal
+          items={items}
+          onClose={() => setShowTableclothCatalog(false)}
           onNotification={notify}
         />
       )}

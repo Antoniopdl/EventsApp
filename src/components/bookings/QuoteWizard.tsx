@@ -11,6 +11,7 @@ import {
   MapPin,
   MessageCircle,
   Package,
+  Palette,
   Search,
   Sparkles,
   User,
@@ -18,6 +19,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { Booking, PickupType } from "@/core/domain/booking";
 import type { ClientAddress, ClientWithStats } from "@/core/domain/client";
+import { findColorByFabricAndName } from "@/core/domain/fabric-catalog";
 import type { InventoryItem } from "@/core/domain/inventory";
 import { FER_EVENTOS_CONFIG } from "@/core/domain/user";
 import { checkInventoryAvailability } from "@/core/use-cases/CheckInventoryAvailability";
@@ -27,6 +29,7 @@ import {
 } from "@/infrastructure/supabase/booking-repository";
 import { searchClients } from "@/infrastructure/supabase/client-repository";
 import { formatCurrency } from "@/lib/utils";
+import { TableclothCatalogModal } from "../inventory/TableclothCatalogModal";
 import { AddressPickerMap } from "../shared/AddressPickerMap";
 
 interface QuoteWizardProps {
@@ -97,6 +100,8 @@ export function QuoteWizard({
   const [selectedSobreColors, setSelectedSobreColors] = useState<
     Record<string, number>
   >({});
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // Filtros de Mobiliario (Paso 2)
   const [furnitureView, setFurnitureView] = useState<
@@ -339,6 +344,68 @@ export function QuoteWizard({
     };
   }, [selectedItems, inventory]);
 
+  // Detección de mesas presentes en la cotización actual
+  const detectedTableInfo = useMemo(() => {
+    const shapes = new Set<string>();
+    const names: string[] = [];
+
+    for (const [id, qty] of Object.entries(selectedItems)) {
+      if (qty <= 0) continue;
+      const it = inventory.find((x) => x.id === id);
+      if (!it) continue;
+
+      const checkName = (name: string, q: number) => {
+        const lower = name.toLowerCase();
+        if (lower.includes("mesa redonda") || lower.includes("redonda")) {
+          shapes.add("redonda");
+          names.push(`${q}x Mesas Redondas`);
+        } else if (
+          lower.includes("cuadrada chica") ||
+          lower.includes("cuad. chica")
+        ) {
+          shapes.add("cuadrada_chica");
+          names.push(`${q}x Mesas Cuadradas Chicas`);
+        } else if (
+          lower.includes("cuadrada grande") ||
+          lower.includes("imperial")
+        ) {
+          shapes.add("cuadrada_grande");
+          names.push(`${q}x Mesas Cuadradas Grandes`);
+        } else if (lower.includes("cuadrada") || lower.includes("cuad")) {
+          shapes.add("cuadrada");
+          names.push(`${q}x Mesas Cuadradas`);
+        } else if (
+          lower.includes("tablón") ||
+          lower.includes("tablon") ||
+          lower.includes("rectangular")
+        ) {
+          shapes.add("tablon");
+          names.push(`${q}x Mesas Tablón`);
+        }
+      };
+
+      if (it.category === "mesas") {
+        checkName(it.name, qty);
+      } else if (it.item_type === "paquete" && it.package_components) {
+        for (const comp of it.package_components) {
+          if (
+            comp.component_item?.category === "mesas" ||
+            comp.component_item?.name.toLowerCase().includes("mesa")
+          ) {
+            checkName(comp.component_item.name, qty * (comp.quantity || 1));
+          }
+        }
+      } else if (it.description?.toLowerCase().includes("mesa")) {
+        checkName(it.description, qty);
+      }
+    }
+
+    return {
+      shapes: Array.from(shapes),
+      summary: Array.from(new Set(names)).join(", "),
+    };
+  }, [selectedItems, inventory]);
+
   // 2. Telas disponibles para manteles base
   const baseTableclothItems = useMemo(() => {
     return inventory.filter(
@@ -391,6 +458,8 @@ export function QuoteWizard({
       name: string;
       hex: string;
       available_stock: number;
+      texture_url?: string | null;
+      drape_url?: string | null;
     }[] = [];
 
     const matching = baseTableclothItems.filter(
@@ -402,28 +471,64 @@ export function QuoteWizard({
     for (const it of matching) {
       if (it.variants && it.variants.length > 0) {
         for (const v of it.variants) {
+          const masterCol = findColorByFabricAndName(
+            selectedBaseFabric,
+            v.color_name,
+          );
           list.push({
             id: v.id,
             name: v.color_name,
-            hex: v.color_hex || "#f8fafc",
+            hex: v.color_hex || masterCol?.color_hex || "#f8fafc",
             available_stock: v.total_stock,
+            texture_url:
+              v.images?.[0] || v.image_url || masterCol?.texture_url || null,
+            drape_url: v.images?.[1] || masterCol?.drape_url || null,
           });
         }
       } else {
+        const masterCol = findColorByFabricAndName(selectedBaseFabric, it.name);
         list.push({
           id: it.id,
           name: it.name,
-          hex: "#f8fafc",
+          hex: masterCol?.color_hex || "#f8fafc",
           available_stock: it.total_stock,
+          texture_url: it.image_url || masterCol?.texture_url || null,
+          drape_url: masterCol?.drape_url || null,
         });
       }
     }
 
     if (list.length === 0) {
+      const b1 = findColorByFabricAndName(selectedBaseFabric, "Blanco");
+      const b2 = findColorByFabricAndName(selectedBaseFabric, "Negro");
+      const b3 =
+        findColorByFabricAndName(selectedBaseFabric, "Arena") ||
+        findColorByFabricAndName(selectedBaseFabric, "Beige");
       list.push(
-        { id: "def-b1", name: "Blanco", hex: "#f8fafc", available_stock: 30 },
-        { id: "def-b2", name: "Negro", hex: "#0f172a", available_stock: 15 },
-        { id: "def-b3", name: "Beige", hex: "#e7d8c5", available_stock: 10 },
+        {
+          id: "def-b1",
+          name: "Blanco",
+          hex: b1?.color_hex || "#f8fafc",
+          available_stock: 30,
+          texture_url: b1?.texture_url,
+          drape_url: b1?.drape_url,
+        },
+        {
+          id: "def-b2",
+          name: "Negro",
+          hex: b2?.color_hex || "#0f172a",
+          available_stock: 15,
+          texture_url: b2?.texture_url,
+          drape_url: b2?.drape_url,
+        },
+        {
+          id: "def-b3",
+          name: b3?.color_name || "Beige",
+          hex: b3?.color_hex || "#e7d8c5",
+          available_stock: 10,
+          texture_url: b3?.texture_url,
+          drape_url: b3?.drape_url,
+        },
       );
     }
     return list;
@@ -436,6 +541,8 @@ export function QuoteWizard({
       name: string;
       hex: string;
       available_stock: number;
+      texture_url?: string | null;
+      drape_url?: string | null;
     }[] = [];
 
     const matching = sobremantelItems.filter(
@@ -447,34 +554,76 @@ export function QuoteWizard({
     for (const it of matching) {
       if (it.variants && it.variants.length > 0) {
         for (const v of it.variants) {
+          const masterCol = findColorByFabricAndName(
+            selectedSobreFabric,
+            v.color_name,
+          );
           list.push({
             id: v.id,
             name: v.color_name,
-            hex: v.color_hex || "#2563eb",
+            hex: v.color_hex || masterCol?.color_hex || "#2563eb",
             available_stock: v.total_stock,
+            texture_url:
+              v.images?.[0] || v.image_url || masterCol?.texture_url || null,
+            drape_url: v.images?.[1] || masterCol?.drape_url || null,
           });
         }
       } else {
+        const masterCol = findColorByFabricAndName(
+          selectedSobreFabric,
+          it.name,
+        );
         list.push({
           id: it.id,
           name: it.name,
-          hex: "#2563eb",
+          hex: masterCol?.color_hex || "#2563eb",
           available_stock: it.total_stock,
+          texture_url: it.image_url || masterCol?.texture_url || null,
+          drape_url: masterCol?.drape_url || null,
         });
       }
     }
 
     if (list.length === 0) {
+      const s1 = findColorByFabricAndName(selectedSobreFabric, "Azul Rey");
+      const s2 =
+        findColorByFabricAndName(selectedSobreFabric, "Oro") ||
+        findColorByFabricAndName(selectedSobreFabric, "Dorado");
+      const s3 = findColorByFabricAndName(selectedSobreFabric, "Rosa Palo");
+      const s4 = findColorByFabricAndName(selectedSobreFabric, "Vino");
       list.push(
-        { id: "def-s1", name: "Azul Rey", hex: "#1d4ed8", available_stock: 25 },
-        { id: "def-s2", name: "Dorado", hex: "#eab308", available_stock: 15 },
+        {
+          id: "def-s1",
+          name: "Azul Rey",
+          hex: s1?.color_hex || "#1d4ed8",
+          available_stock: 25,
+          texture_url: s1?.texture_url,
+          drape_url: s1?.drape_url,
+        },
+        {
+          id: "def-s2",
+          name: s2?.color_name || "Dorado",
+          hex: s2?.color_hex || "#eab308",
+          available_stock: 15,
+          texture_url: s2?.texture_url,
+          drape_url: s2?.drape_url,
+        },
         {
           id: "def-s3",
-          name: "Rosa Pastel",
-          hex: "#f472b6",
+          name: s3?.color_name || "Rosa Pastel",
+          hex: s3?.color_hex || "#f472b6",
           available_stock: 20,
+          texture_url: s3?.texture_url,
+          drape_url: s3?.drape_url,
         },
-        { id: "def-s4", name: "Vino", hex: "#881337", available_stock: 12 },
+        {
+          id: "def-s4",
+          name: "Vino",
+          hex: s4?.color_hex || "#881337",
+          available_stock: 12,
+          texture_url: s4?.texture_url,
+          drape_url: s4?.drape_url,
+        },
       );
     }
     return list;
@@ -701,6 +850,9 @@ export function QuoteWizard({
       (balanceDue > 0
         ? `💵 *Saldo Pendiente:* ${formatCurrency(balanceDue)}\n\n`
         : "\n") +
+      (tableclothNotes.length > 0 || totalMantelesBaseNeeded > 0
+        ? `📸 *Catálogo Digital de Manteles:* Puedes ver fotos reales de nuestras telas y caídas en:\n${typeof window !== "undefined" ? window.location.origin : ""}/catalogo\n\n`
+        : "") +
       (confirmedBookingFolio
         ? `🔖 *Folio de Reserva:* ${confirmedBookingFolio}\n\n`
         : "") +
@@ -1188,7 +1340,7 @@ export function QuoteWizard({
           {/* SECCIÓN INTERACTIVA DE TELAS Y COLORES PARA PAQUETES */}
           {(totalMantelesBaseNeeded > 0 || totalSobremantelesNeeded > 0) && (
             <div className="rounded-2xl border-2 border-blue-300 bg-blue-50/50 p-3.5 space-y-3.5 shadow-xs">
-              <div className="flex items-center justify-between border-b border-blue-200 pb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-blue-200 pb-2.5">
                 <div>
                   <h4 className="font-extrabold text-blue-950 text-xs flex items-center gap-1.5">
                     <span>🎨 Mantelería de Paquetes</span>
@@ -1197,7 +1349,53 @@ export function QuoteWizard({
                     Elige la tela y colores para los paquetes seleccionados.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCatalogModalOpen(true)}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-blue-700 active:scale-95 transition-all self-start sm:self-auto"
+                >
+                  <Palette className="h-3.5 w-3.5" />
+                  <span>Ver Muestrario de Fotos ↗</span>
+                </button>
               </div>
+
+              {/* Guía de compatibilidad según mesas detectadas */}
+              {detectedTableInfo.shapes.length > 0 && (
+                <div className="rounded-xl border border-blue-200 bg-white p-2.5 text-xs text-blue-950 space-y-1 shadow-2xs">
+                  <div className="flex items-center gap-1.5 font-extrabold text-blue-800">
+                    <Sparkles className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                    <span>
+                      Mesas detectadas en la orden: {detectedTableInfo.summary}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 pl-5 space-y-0.5">
+                    {detectedTableInfo.shapes.includes("redonda") && (
+                      <p>
+                        • <strong>Mesa Redonda:</strong> Usa mantel base
+                        redondo. Sobremantel Chico es compatible.
+                      </p>
+                    )}
+                    {detectedTableInfo.shapes.includes("cuadrada_chica") && (
+                      <p>
+                        • <strong>Mesa Cuadrada Chica:</strong> Usa mantel base
+                        cuadrado y Sobremantel Chico.
+                      </p>
+                    )}
+                    {detectedTableInfo.shapes.includes("cuadrada_grande") && (
+                      <p>
+                        • <strong>Mesa Imperial (Grande):</strong> Requiere
+                        Sobremantel Grande exclusivo.
+                      </p>
+                    )}
+                    {detectedTableInfo.shapes.includes("tablon") && (
+                      <p>
+                        • <strong>Mesa Tablón:</strong> Usa manteles
+                        alargados/tablón.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* 1. MANTELES BASE */}
               {totalMantelesBaseNeeded > 0 && (
@@ -1278,7 +1476,7 @@ export function QuoteWizard({
                     <span className="text-[10px] font-bold text-slate-600 block mb-1">
                       2. Elige Colores (Tela {selectedBaseFabric}):
                     </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-1">
                       {baseColorsForFabric.map((c) => {
                         const curQty = selectedBaseColors[c.name] || 0;
                         const isOverStock = curQty > c.available_stock;
@@ -1294,10 +1492,34 @@ export function QuoteWizard({
                             }`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              <span
-                                className="h-4 w-4 rounded-full border border-slate-300 shrink-0 shadow-2xs"
-                                style={{ backgroundColor: c.hex }}
-                              />
+                              {c.texture_url ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPreviewImage(
+                                      c.drape_url || c.texture_url || null,
+                                    )
+                                  }
+                                  className="relative h-8 w-8 rounded-lg overflow-hidden border border-slate-300 shrink-0 cursor-pointer shadow-2xs hover:ring-2 hover:ring-blue-500 transition-all text-left"
+                                  title="Ver foto ampliada de muestra y caída"
+                                >
+                                  <img
+                                    src={c.texture_url}
+                                    alt={c.name}
+                                    className="h-full w-full object-cover"
+                                  />
+                                  {c.drape_url && (
+                                    <span className="absolute bottom-0 right-0 bg-blue-700 text-[8px] font-black text-white px-0.5 rounded-tl">
+                                      2📷
+                                    </span>
+                                  )}
+                                </button>
+                              ) : (
+                                <span
+                                  className="h-5 w-5 rounded-full border border-slate-300 shrink-0 shadow-2xs"
+                                  style={{ backgroundColor: c.hex }}
+                                />
+                              )}
                               <div className="truncate">
                                 <span className="font-bold text-slate-900 text-xs block truncate">
                                   {c.name}
@@ -1419,7 +1641,7 @@ export function QuoteWizard({
                     <span className="text-[10px] font-bold text-slate-600 block mb-1">
                       2. Elige Colores (Tela {selectedSobreFabric}):
                     </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-1">
                       {sobreColorsForFabric.map((c) => {
                         const curQty = selectedSobreColors[c.name] || 0;
                         const isOverStock = curQty > c.available_stock;
@@ -1435,10 +1657,34 @@ export function QuoteWizard({
                             }`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              <span
-                                className="h-4 w-4 rounded-full border border-slate-300 shrink-0 shadow-2xs"
-                                style={{ backgroundColor: c.hex }}
-                              />
+                              {c.texture_url ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPreviewImage(
+                                      c.drape_url || c.texture_url || null,
+                                    )
+                                  }
+                                  className="relative h-8 w-8 rounded-lg overflow-hidden border border-slate-300 shrink-0 cursor-pointer shadow-2xs hover:ring-2 hover:ring-blue-500 transition-all text-left"
+                                  title="Ver foto ampliada de muestra y caída"
+                                >
+                                  <img
+                                    src={c.texture_url}
+                                    alt={c.name}
+                                    className="h-full w-full object-cover"
+                                  />
+                                  {c.drape_url && (
+                                    <span className="absolute bottom-0 right-0 bg-blue-700 text-[8px] font-black text-white px-0.5 rounded-tl">
+                                      2📷
+                                    </span>
+                                  )}
+                                </button>
+                              ) : (
+                                <span
+                                  className="h-5 w-5 rounded-full border border-slate-300 shrink-0 shadow-2xs"
+                                  style={{ backgroundColor: c.hex }}
+                                />
+                              )}
                               <div className="truncate">
                                 <span className="font-bold text-slate-900 text-xs block truncate">
                                   {c.name}
@@ -1792,6 +2038,48 @@ export function QuoteWizard({
             setShowMapModal(false);
           }}
           onClose={() => setShowMapModal(false)}
+        />
+      )}
+
+      {/* Mini-Lightbox para ver la foto de la tela/caída ampliada */}
+      {previewImage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPreviewImage(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setPreviewImage(null);
+          }}
+        >
+          <div className="relative max-w-sm rounded-2xl bg-white p-3 shadow-2xl overflow-hidden">
+            <img
+              src={previewImage}
+              alt="Muestra de tela ampliada"
+              className="h-80 w-full object-cover rounded-xl"
+            />
+            <div className="pt-3 text-center">
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="w-full rounded-xl bg-slate-900 py-2 text-xs font-bold text-white hover:bg-slate-800"
+              >
+                Cerrar vista previa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Completo de Catálogo y Muestrario de Manteles */}
+      {isCatalogModalOpen && (
+        <TableclothCatalogModal
+          items={inventory}
+          onClose={() => setIsCatalogModalOpen(false)}
+          onNotification={onNotification}
         />
       )}
     </div>

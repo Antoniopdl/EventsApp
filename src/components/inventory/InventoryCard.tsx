@@ -2,7 +2,10 @@
 
 import { Camera, Check, Edit2, Users } from "lucide-react";
 import { useState } from "react";
-import type { InventoryItem } from "@/core/domain/inventory";
+import {
+  type InventoryItem,
+  getTableCompatibilityLabel,
+} from "@/core/domain/inventory";
 import type { UserRole } from "@/core/domain/user";
 import { formatCurrency } from "@/lib/utils";
 import { getPackagePills } from "../desktop/DesktopInventoryManager";
@@ -167,6 +170,15 @@ export function InventoryCard({
                   Tela {item.fabric}
                 </span>
               )}
+              {(() => {
+                const compatLabel = getTableCompatibilityLabel(item);
+                if (!compatLabel) return null;
+                return (
+                  <span className="rounded-md bg-blue-50 text-blue-900 border border-blue-200 text-[9px] font-bold px-1.5 py-0.2">
+                    {compatLabel}
+                  </span>
+                );
+              })()}
             </div>
 
             {/* Nombre editable o estático */}
