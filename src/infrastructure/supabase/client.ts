@@ -1,10 +1,18 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey =
+const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+// Limpia diagonales finales o rutas accidentales como /rest/v1
+const cleanUrl = rawUrl
+  .trim()
+  .replace(/\/+$/, "")
+  .replace(/\/rest\/v1\/?$/, "");
+
+const supabaseUrl = cleanUrl;
+const supabaseAnonKey = (
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  "";
+  ""
+).trim();
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
@@ -25,7 +33,7 @@ export async function testSupabaseConnection(): Promise<{
   ok: boolean;
   error?: string;
 }> {
-  const url = supabaseUrl ? `${supabaseUrl.slice(0, 22)}...` : "(vacía)";
+  const url = supabaseUrl || "(vacía)";
   const hasKey = Boolean(supabaseAnonKey);
   const keyPrefix = supabaseAnonKey
     ? `${supabaseAnonKey.slice(0, 10)}...`
