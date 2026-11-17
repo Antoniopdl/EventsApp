@@ -188,10 +188,34 @@ export function InventoryCard({
               </h3>
             )}
 
-            {isPackage && item.description && !isEditMode && (
-              <p className="text-[10px] text-slate-500 line-clamp-2 mt-0.5">
-                {item.description}
-              </p>
+            {isPackage && !isEditMode && (
+              <div className="space-y-1 mt-1">
+                {item.package_components &&
+                item.package_components.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {item.package_components.map((comp) => {
+                      const label =
+                        comp.customization_type === "mantel_base"
+                          ? "Mantel Base"
+                          : comp.customization_type === "sobremantel"
+                            ? "Sobremantel"
+                            : comp.component_item?.name || "Pieza";
+                      return (
+                        <span
+                          key={comp.id || comp.component_item_id}
+                          className="inline-flex items-center rounded-md bg-purple-50 text-purple-900 border border-purple-200 px-1.5 py-0.5 text-[9px] font-bold"
+                        >
+                          {comp.quantity}x {label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : item.description ? (
+                  <p className="text-[10px] text-slate-500 line-clamp-2">
+                    {item.description}
+                  </p>
+                ) : null}
+              </div>
             )}
           </div>
 

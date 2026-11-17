@@ -84,7 +84,17 @@ export function normalizeCategoryFromDb(item: {
   name?: string;
   sku?: string;
   category: string;
+  item_type?: string;
 }): string {
+  if (
+    item.item_type === "paquete" ||
+    item.category === "paquetes" ||
+    (item.sku?.startsWith("PAQ-") ?? false) ||
+    (item.name?.toLowerCase().startsWith("paquete") ?? false)
+  ) {
+    return "paquetes";
+  }
+
   const lowerName = (item.name || "").toLowerCase();
   const lowerSku = (item.sku || "").toLowerCase();
 
@@ -288,13 +298,25 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
         lastSupabaseError = null;
         if (data.length > 0) {
           const overrides = getLocalItemOverrides();
+          const localPkgs = getLocalPackages();
+          const localPkgMap = new Map(localPkgs.map((p) => [p.id, p]));
           const mapped = (data as InventoryItem[]).map((item) => {
             const ov = overrides[item.id];
+            const localPkg = localPkgMap.get(item.id);
             const resolvedCat = ov?.category || normalizeCategoryFromDb(item);
+            const isPkg =
+              resolvedCat === "paquetes" ||
+              item.item_type === "paquete" ||
+              (item.sku?.startsWith("PAQ-") ?? false);
             return {
               ...item,
               ...ov,
               category: resolvedCat,
+              item_type: isPkg ? "paquete" : item.item_type || "individual",
+              package_components:
+                item.package_components && item.package_components.length > 0
+                  ? item.package_components
+                  : localPkg?.package_components || item.package_components,
             };
           });
           return mapped;
@@ -314,13 +336,23 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
         if (!simpleErr && simpleData && simpleData.length > 0) {
           lastSupabaseError = null;
           const overrides = getLocalItemOverrides();
+          const localPkgs = getLocalPackages();
+          const localPkgMap = new Map(localPkgs.map((p) => [p.id, p]));
           const mapped = (simpleData as InventoryItem[]).map((item) => {
             const ov = overrides[item.id];
+            const localPkg = localPkgMap.get(item.id);
             const resolvedCat = ov?.category || normalizeCategoryFromDb(item);
+            const isPkg =
+              resolvedCat === "paquetes" ||
+              item.item_type === "paquete" ||
+              (item.sku?.startsWith("PAQ-") ?? false);
             return {
               ...item,
               ...ov,
               category: resolvedCat,
+              item_type: isPkg ? "paquete" : item.item_type || "individual",
+              package_components:
+                localPkg?.package_components || item.package_components,
             };
           });
           return mapped;
@@ -708,19 +740,70 @@ export async function createPackageInDb(
     total_stock: number;
     sku?: string;
     image_url?: string;
+    description?: string;
   },
-  components: { component_item_id: string; quantity: number }[],
+  components: {
+    component_item_id: string;
+    quantity: number;
+    is_customizable?: boolean;
+    customization_type?: string | null;
+  }[],
 ): Promise<InventoryItem | null> {
   const sku = packageData.sku || `PAQ-${Date.now().toString().slice(-6)}`;
   const pkgId = `pkg-${Date.now()}`;
 
-  const mappedComponents: PackageComponent[] = components.map((c, i) => ({
-    id: `pc-${Date.now()}-${i}`,
-    package_id: pkgId,
-    component_item_id: c.component_item_id,
-    quantity: c.quantity,
-    is_customizable: false,
-  }));
+  const mappedComponents: PackageComponent[] = components.map((c, i) => {
+    let compItem = findFallbackItemById(c.component_item_id);
+    if (!compItem && c.customization_type === "mantel_base") {
+      compItem = {
+        id: c.component_item_id,
+        sku: "MANT-BASE-SLOT",
+        name: "Mantel Base",
+        category: "manteles_base",
+        total_stock: 50,
+        rental_price: 45,
+        replacement_price: 240,
+        buffer_cleanup_hours: 48,
+        is_active: true,
+      };
+    } else if (!compItem && c.customization_type === "sobremantel") {
+      compItem = {
+        id: c.component_item_id,
+        sku: "SOBR-SLOT",
+        name: "Sobremantel",
+        category: "sobremanteles",
+        total_stock: 50,
+        rental_price: 30,
+        replacement_price: 160,
+        buffer_cleanup_hours: 48,
+        is_active: true,
+      };
+    }
+
+    return {
+      id: `pc-${Date.now()}-${i}`,
+      package_id: pkgId,
+      component_item_id: c.component_item_id,
+      quantity: c.quantity,
+      is_customizable: Boolean(c.is_customizable),
+      customization_type: c.customization_type || null,
+      component_item: compItem,
+    };
+  });
+
+  const autoDescription =
+    packageData.description?.trim() ||
+    mappedComponents
+      .map((c) => {
+        const name =
+          c.customization_type === "mantel_base"
+            ? "Mantel Base"
+            : c.customization_type === "sobremantel"
+              ? "Sobremantel"
+              : c.component_item?.name || "Pieza";
+        return `${c.quantity}x ${name}`;
+      })
+      .join(" + ");
 
   const newPackageItem: InventoryItem = {
     id: pkgId,
@@ -728,6 +811,7 @@ export async function createPackageInDb(
     name: packageData.name.trim(),
     category: "paquetes",
     item_type: "paquete",
+    description: autoDescription,
     rental_price: packageData.rental_price,
     replacement_price: packageData.rental_price * 5,
     total_stock: packageData.total_stock,
@@ -741,6 +825,12 @@ export async function createPackageInDb(
   };
 
   saveLocalPackage(newPackageItem);
+  saveLocalItemOverride(newPackageItem.id, {
+    category: "paquetes",
+    item_type: "paquete",
+    description: autoDescription,
+    package_components: mappedComponents,
+  });
 
   if (isSupabaseConfigured && supabase) {
     try {
@@ -752,6 +842,7 @@ export async function createPackageInDb(
             name: newPackageItem.name,
             category: "otros",
             item_type: "paquete",
+            description: autoDescription,
             rental_price: newPackageItem.rental_price,
             total_stock: newPackageItem.total_stock,
             capacity_people: newPackageItem.capacity_people,
@@ -769,10 +860,18 @@ export async function createPackageInDb(
             package_id: pkg.id,
             component_item_id: c.component_item_id,
             quantity: c.quantity,
+            is_customizable: Boolean(c.is_customizable),
+            customization_type: c.customization_type || null,
           }));
           await supabase.from("package_items").insert(compRows);
         }
         saveLocalPackage(newPackageItem);
+        saveLocalItemOverride(newPackageItem.id, {
+          category: "paquetes",
+          item_type: "paquete",
+          description: autoDescription,
+          package_components: mappedComponents,
+        });
       }
     } catch (e) {
       console.warn("Error creando paquete en Supabase:", e);

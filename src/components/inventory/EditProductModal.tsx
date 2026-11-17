@@ -1,7 +1,7 @@
 "use client";
 
 import { Camera, Check, Palette, Plus, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type Category,
   type InventoryItem,
@@ -62,10 +62,37 @@ export function EditProductModal({
   const [newColorStock, setNewColorStock] = useState(10);
 
   // Componentes si es paquete
+  const [mantelBaseQty, setMantelBaseQty] = useState<number>(() => {
+    const found = item.package_components?.find(
+      (c) =>
+        c.customization_type === "mantel_base" ||
+        c.component_item?.category === "manteles_base",
+    );
+    return found ? found.quantity : 0;
+  });
+
+  const [sobremantelQty, setSobremantelQty] = useState<number>(() => {
+    const found = item.package_components?.find(
+      (c) =>
+        c.customization_type === "sobremantel" ||
+        c.component_item?.category === "sobremanteles",
+    );
+    return found ? found.quantity : 0;
+  });
+
+  const [pkgActiveCategory, setPkgActiveCategory] = useState<string>("todas");
+  const [pkgSearchQuery, setPkgSearchQuery] = useState<string>("");
+
   const [pkgQuantities, setPkgQuantities] = useState<Record<string, number>>(
     () => {
       const map: Record<string, number> = {};
       for (const comp of item.package_components || []) {
+        if (
+          comp.customization_type === "mantel_base" ||
+          comp.customization_type === "sobremantel"
+        ) {
+          continue;
+        }
         map[comp.component_item_id] = comp.quantity;
       }
       return map;
@@ -74,7 +101,145 @@ export function EditProductModal({
 
   const [isSaving, setIsSaving] = useState(false);
   const showFabricSection = !isPackage && isTableclothCategory(category);
-  const looseItems = allItems.filter((i) => i.item_type !== "paquete");
+
+  // Artículos sueltos excluyendo mantelería individual si es paquete
+  const looseItems = useMemo(() => {
+    return allItems.filter((i) => {
+      if (i.item_type === "paquete") return false;
+      if (isPackage) {
+        const isTablecloth =
+          i.category === "manteles_base" ||
+          i.category === "sobremanteles" ||
+          i.category === "manteleria";
+        return !isTablecloth;
+      }
+      return true;
+    });
+  }, [allItems, isPackage]);
+
+  // Filtrado de artículos sueltos para receta
+  const filteredLooseItems = useMemo(() => {
+    return looseItems.filter((comp) => {
+      if (pkgActiveCategory !== "todas" && pkgActiveCategory !== "manteleria") {
+        if (pkgActiveCategory === "otros") {
+          const mainCats = ["mesas", "sillas", "vajilla"];
+          if (mainCats.includes(comp.category)) return false;
+        } else if (comp.category !== pkgActiveCategory) {
+          return false;
+        }
+      }
+      if (!pkgSearchQuery.trim()) return true;
+      const q = pkgSearchQuery.toLowerCase();
+      return (
+        comp.name.toLowerCase().includes(q) ||
+        comp.sku.toLowerCase().includes(q)
+      );
+    });
+  }, [looseItems, pkgActiveCategory, pkgSearchQuery]);
+
+  // Stock total de manteles base y sobremanteles
+  const totalMantelesBaseStock = useMemo(() => {
+    return allItems
+      .filter(
+        (i) =>
+          i.category === "manteles_base" ||
+          (i.category === "manteleria" &&
+            !i.name.toLowerCase().includes("sobremantel")) ||
+          i.name.toLowerCase().includes("mantel base"),
+      )
+      .reduce((sum, it) => sum + it.total_stock, 0);
+  }, [allItems]);
+
+  const totalSobremantelesStock = useMemo(() => {
+    return allItems
+      .filter(
+        (i) =>
+          i.category === "sobremanteles" ||
+          i.name.toLowerCase().includes("sobremantel"),
+      )
+      .reduce((sum, it) => sum + it.total_stock, 0);
+  }, [allItems]);
+
+  // Auto Capacidad para paquete: 1 silla = 1 persona
+  useEffect(() => {
+    if (isPackage) {
+      let chairs = 0;
+      for (const [id, qty] of Object.entries(pkgQuantities)) {
+        const comp = allItems.find((i) => i.id === id);
+        if (
+          comp &&
+          (comp.category === "sillas" ||
+            comp.name.toLowerCase().includes("silla"))
+        ) {
+          chairs += qty;
+        }
+      }
+      if (chairs > 0) {
+        setCapacityPeople(chairs);
+      }
+    }
+  }, [isPackage, pkgQuantities, allItems]);
+
+  // Auto Stock para paquete: Math.min(stock / qty)
+  const { calculatedPkgStock, pkgBottleneck } = useMemo(() => {
+    if (!isPackage) {
+      return { calculatedPkgStock: totalStock, pkgBottleneck: null };
+    }
+    const entries = Object.entries(pkgQuantities).filter(([_, qty]) => qty > 0);
+    if (entries.length === 0 && mantelBaseQty === 0 && sobremantelQty === 0) {
+      return { calculatedPkgStock: 0, pkgBottleneck: null };
+    }
+
+    let minPkgs = Number.POSITIVE_INFINITY;
+    let bottleneck = "";
+
+    for (const [id, qty] of entries) {
+      const it = allItems.find((i) => i.id === id);
+      if (!it || qty <= 0) continue;
+      const maxForComp = Math.floor(it.total_stock / qty);
+      if (maxForComp < minPkgs) {
+        minPkgs = maxForComp;
+        bottleneck = `${it.name} (${it.total_stock} disponibles)`;
+      }
+    }
+
+    if (mantelBaseQty > 0) {
+      const maxForBase = Math.floor(totalMantelesBaseStock / mantelBaseQty);
+      if (maxForBase < minPkgs) {
+        minPkgs = maxForBase;
+        bottleneck = `Manteles Base (${totalMantelesBaseStock} disponibles)`;
+      }
+    }
+
+    if (sobremantelQty > 0) {
+      const maxForSobre = Math.floor(totalSobremantelesStock / sobremantelQty);
+      if (maxForSobre < minPkgs) {
+        minPkgs = maxForSobre;
+        bottleneck = `Sobremanteles (${totalSobremantelesStock} disponibles)`;
+      }
+    }
+
+    return {
+      calculatedPkgStock:
+        minPkgs === Number.POSITIVE_INFINITY ? 0 : Math.max(0, minPkgs),
+      pkgBottleneck: bottleneck,
+    };
+  }, [
+    isPackage,
+    pkgQuantities,
+    mantelBaseQty,
+    sobremantelQty,
+    allItems,
+    totalStock,
+    totalMantelesBaseStock,
+    totalSobremantelesStock,
+  ]);
+
+  useEffect(() => {
+    if (isPackage && calculatedPkgStock > 0) {
+      setTotalStock(calculatedPkgStock);
+    }
+  }, [isPackage, calculatedPkgStock]);
 
   const handleAddFabric = () => {
     if (!newFabricInput.trim()) return;
@@ -160,13 +325,49 @@ export function EditProductModal({
         : totalStock;
 
     const updatedComponents: PackageComponent[] | undefined = isPackage
-      ? Object.entries(pkgQuantities).map(([compId, qty], idx) => ({
-          id: `pc-${Date.now()}-${idx}`,
-          package_id: item.id,
-          component_item_id: compId,
-          quantity: qty,
-          is_customizable: false,
-        }))
+      ? [
+          ...Object.entries(pkgQuantities).map(([compId, qty], idx) => ({
+            id: `pc-${Date.now()}-${idx}`,
+            package_id: item.id,
+            component_item_id: compId,
+            quantity: qty,
+            is_customizable: false,
+          })),
+          ...(mantelBaseQty > 0
+            ? [
+                {
+                  id: `pc-${Date.now()}-mb`,
+                  package_id: item.id,
+                  component_item_id:
+                    allItems.find(
+                      (i) =>
+                        i.category === "manteles_base" ||
+                        i.name.toLowerCase().includes("mantel base"),
+                    )?.id || "item-5",
+                  quantity: mantelBaseQty,
+                  is_customizable: true,
+                  customization_type: "mantel_base",
+                },
+              ]
+            : []),
+          ...(sobremantelQty > 0
+            ? [
+                {
+                  id: `pc-${Date.now()}-sm`,
+                  package_id: item.id,
+                  component_item_id:
+                    allItems.find(
+                      (i) =>
+                        i.category === "sobremanteles" ||
+                        i.name.toLowerCase().includes("sobremantel"),
+                    )?.id || "item-8",
+                  quantity: sobremantelQty,
+                  is_customizable: true,
+                  customization_type: "sobremantel",
+                },
+              ]
+            : []),
+        ]
       : undefined;
 
     await onSave(item.id, {
@@ -503,6 +704,11 @@ export function EditProductModal({
                   onChange={(e) => setTotalStock(Number(e.target.value))}
                   className="w-full rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-900 outline-none disabled:bg-slate-100"
                 />
+                {isPackage && pkgBottleneck && (
+                  <p className="text-[10px] text-blue-700 font-medium mt-1">
+                    ✓ Limitado por {pkgBottleneck}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -528,50 +734,162 @@ export function EditProductModal({
 
             {/* Receta de Componentes (si es Paquete) */}
             {isPackage && (
-              <div className="space-y-1.5">
-                <span className="block text-xs font-bold text-slate-800">
-                  Artículos sueltos que descuenta este paquete:
-                </span>
-                <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-2 no-scrollbar">
-                  {looseItems.map((comp) => {
-                    const qty = pkgQuantities[comp.id] || 0;
-                    return (
-                      <div
-                        key={comp.id}
-                        className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-2"
-                      >
-                        <div className="flex-1 pr-2">
-                          <p className="font-bold text-slate-900 text-xs line-clamp-1">
-                            {comp.name}
-                          </p>
-                          <p className="text-[10px] text-slate-500">
-                            {formatCurrency(comp.rental_price)} • Stock:{" "}
-                            {comp.total_stock}
-                          </p>
-                        </div>
+              <div className="space-y-2 border-t border-slate-100 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="block text-xs font-bold text-slate-800">
+                    Artículos que incluye este paquete:
+                  </span>
+                  {calculatedPkgStock > 0 && (
+                    <span className="text-[10px] font-bold text-purple-700">
+                      Stock: {calculatedPkgStock} paq.
+                    </span>
+                  )}
+                </div>
+
+                {/* Filtro de Categorías */}
+                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
+                  {[
+                    { id: "todas", label: "Todas" },
+                    { id: "mesas", label: "Mesas" },
+                    { id: "sillas", label: "Sillas" },
+                    { id: "manteleria", label: "Manteles" },
+                    { id: "vajilla", label: "Vajilla" },
+                    { id: "otros", label: "Otros" },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setPkgActiveCategory(tab.id)}
+                      className={`shrink-0 rounded-xl px-2.5 py-1 text-[11px] font-bold transition-all ${
+                        pkgActiveCategory === tab.id
+                          ? "bg-purple-700 text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Buscador */}
+                {pkgActiveCategory !== "manteleria" && (
+                  <input
+                    type="text"
+                    value={pkgSearchQuery}
+                    onChange={(e) => setPkgSearchQuery(e.target.value)}
+                    placeholder="Filtrar por nombre..."
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-1 px-2.5 text-xs text-slate-900 outline-none"
+                  />
+                )}
+
+                {/* Slots Genéricos de Mantelería */}
+                {(pkgActiveCategory === "todas" ||
+                  pkgActiveCategory === "manteleria") && (
+                  <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-2 space-y-1.5">
+                    <span className="text-[10px] font-bold text-purple-900 block">
+                      Mantelería genérica (se define tela y color al reservar):
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="flex items-center justify-between rounded-lg bg-white border border-purple-200 p-1.5">
+                        <span className="text-xs font-bold text-slate-800">
+                          Mantel Base
+                        </span>
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => handlePkgQtyChange(comp.id, -1)}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 bg-white font-bold text-xs active:scale-95"
+                            onClick={() =>
+                              setMantelBaseQty((q) => Math.max(0, q - 1))
+                            }
+                            className="h-6 w-6 rounded bg-slate-100 font-bold text-xs"
                           >
                             -
                           </button>
-                          <span className="w-6 text-center font-bold text-slate-900 text-xs">
-                            {qty}
+                          <span className="w-5 text-center font-bold text-xs">
+                            {mantelBaseQty}
                           </span>
                           <button
                             type="button"
-                            onClick={() => handlePkgQtyChange(comp.id, 1)}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 font-bold text-white text-xs active:scale-95"
+                            onClick={() => setMantelBaseQty((q) => q + 1)}
+                            className="h-6 w-6 rounded bg-purple-700 text-white font-bold text-xs"
                           >
                             +
                           </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      <div className="flex items-center justify-between rounded-lg bg-white border border-purple-200 p-1.5">
+                        <span className="text-xs font-bold text-slate-800">
+                          Sobremantel
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSobremantelQty((q) => Math.max(0, q - 1))
+                            }
+                            className="h-6 w-6 rounded bg-slate-100 font-bold text-xs"
+                          >
+                            -
+                          </button>
+                          <span className="w-5 text-center font-bold text-xs">
+                            {sobremantelQty}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSobremantelQty((q) => q + 1)}
+                            className="h-6 w-6 rounded bg-purple-700 text-white font-bold text-xs"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Artículos sueltos regulares */}
+                {pkgActiveCategory !== "manteleria" && (
+                  <div className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-1.5 no-scrollbar">
+                    {filteredLooseItems.map((comp) => {
+                      const qty = pkgQuantities[comp.id] || 0;
+                      return (
+                        <div
+                          key={comp.id}
+                          className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-1.5"
+                        >
+                          <div className="flex-1 pr-1">
+                            <p className="font-bold text-slate-900 text-xs line-clamp-1">
+                              {comp.name}
+                            </p>
+                            <p className="text-[10px] text-slate-500">
+                              {formatCurrency(comp.rental_price)} • Stock:{" "}
+                              {comp.total_stock}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handlePkgQtyChange(comp.id, -1)}
+                              className="flex h-6 w-6 items-center justify-center rounded border border-slate-300 bg-white font-bold text-xs active:scale-95"
+                            >
+                              -
+                            </button>
+                            <span className="w-5 text-center font-bold text-slate-900 text-xs">
+                              {qty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handlePkgQtyChange(comp.id, 1)}
+                              className="flex h-6 w-6 items-center justify-center rounded bg-purple-700 font-bold text-white text-xs active:scale-95"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

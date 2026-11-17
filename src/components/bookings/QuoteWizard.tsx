@@ -86,6 +86,18 @@ export function QuoteWizard({
     {},
   );
 
+  // Selección de telas y colores para manteles incluidos en paquetes
+  const [selectedBaseFabric, setSelectedBaseFabric] =
+    useState<string>("Tergal");
+  const [selectedBaseColors, setSelectedBaseColors] = useState<
+    Record<string, number>
+  >({});
+  const [selectedSobreFabric, setSelectedSobreFabric] =
+    useState<string>("Satín");
+  const [selectedSobreColors, setSelectedSobreColors] = useState<
+    Record<string, number>
+  >({});
+
   // Filtros de Mobiliario (Paso 2)
   const [furnitureView, setFurnitureView] = useState<
     "paquetes" | "individuales"
@@ -277,6 +289,309 @@ export function QuoteWizard({
     existingBookings,
   ]);
 
+  // 1. Detección de manteles base y sobremanteles requeridos por los paquetes seleccionados
+  const { totalMantelesBaseNeeded, totalSobremantelesNeeded } = useMemo(() => {
+    let baseCount = 0;
+    let sobreCount = 0;
+
+    for (const [id, qty] of Object.entries(selectedItems)) {
+      if (qty <= 0) continue;
+      const it = inventory.find((i) => i.id === id);
+      if (it?.item_type !== "paquete") continue;
+
+      let foundInRecipe = false;
+      if (it.package_components && it.package_components.length > 0) {
+        for (const comp of it.package_components) {
+          const isBase =
+            comp.customization_type === "mantel_base" ||
+            comp.component_item?.category === "manteles_base" ||
+            comp.component_item?.name.toLowerCase().includes("mantel base");
+          const isSobre =
+            comp.customization_type === "sobremantel" ||
+            comp.component_item?.category === "sobremanteles" ||
+            comp.component_item?.name.toLowerCase().includes("sobremantel");
+
+          if (isBase) {
+            baseCount += comp.quantity * qty;
+            foundInRecipe = true;
+          }
+          if (isSobre) {
+            sobreCount += comp.quantity * qty;
+            foundInRecipe = true;
+          }
+        }
+      }
+
+      if (!foundInRecipe && it.description) {
+        const descLower = it.description.toLowerCase();
+        if (descLower.includes("sobremantel")) {
+          sobreCount += 1 * qty;
+        }
+        if (descLower.includes("mantel")) {
+          baseCount += 1 * qty;
+        }
+      }
+    }
+
+    return {
+      totalMantelesBaseNeeded: baseCount,
+      totalSobremantelesNeeded: sobreCount,
+    };
+  }, [selectedItems, inventory]);
+
+  // 2. Telas disponibles para manteles base
+  const baseTableclothItems = useMemo(() => {
+    return inventory.filter(
+      (i) =>
+        i.category === "manteles_base" ||
+        (i.category === "manteleria" &&
+          !i.name.toLowerCase().includes("sobremantel")) ||
+        i.name.toLowerCase().includes("mantel base"),
+    );
+  }, [inventory]);
+
+  const availableBaseFabrics = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of baseTableclothItems) {
+      if (it.fabric) set.add(it.fabric);
+    }
+    if (set.size === 0) {
+      set.add("Tergal");
+      set.add("Satín");
+    }
+    return Array.from(set);
+  }, [baseTableclothItems]);
+
+  // 3. Telas disponibles para sobremanteles
+  const sobremantelItems = useMemo(() => {
+    return inventory.filter(
+      (i) =>
+        i.category === "sobremanteles" ||
+        i.name.toLowerCase().includes("sobremantel"),
+    );
+  }, [inventory]);
+
+  const availableSobreFabrics = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of sobremantelItems) {
+      if (it.fabric) set.add(it.fabric);
+    }
+    if (set.size === 0) {
+      set.add("Satín");
+      set.add("Organza");
+      set.add("Bordado");
+    }
+    return Array.from(set);
+  }, [sobremantelItems]);
+
+  // 4. Colores para tela seleccionada en manteles base
+  const baseColorsForFabric = useMemo(() => {
+    const list: {
+      id: string;
+      name: string;
+      hex: string;
+      available_stock: number;
+    }[] = [];
+
+    const matching = baseTableclothItems.filter(
+      (it) =>
+        (it.fabric || "Tergal").toLowerCase() ===
+        selectedBaseFabric.toLowerCase(),
+    );
+
+    for (const it of matching) {
+      if (it.variants && it.variants.length > 0) {
+        for (const v of it.variants) {
+          list.push({
+            id: v.id,
+            name: v.color_name,
+            hex: v.color_hex || "#f8fafc",
+            available_stock: v.total_stock,
+          });
+        }
+      } else {
+        list.push({
+          id: it.id,
+          name: it.name,
+          hex: "#f8fafc",
+          available_stock: it.total_stock,
+        });
+      }
+    }
+
+    if (list.length === 0) {
+      list.push(
+        { id: "def-b1", name: "Blanco", hex: "#f8fafc", available_stock: 30 },
+        { id: "def-b2", name: "Negro", hex: "#0f172a", available_stock: 15 },
+        { id: "def-b3", name: "Beige", hex: "#e7d8c5", available_stock: 10 },
+      );
+    }
+    return list;
+  }, [baseTableclothItems, selectedBaseFabric]);
+
+  // 5. Colores para tela seleccionada en sobremanteles
+  const sobreColorsForFabric = useMemo(() => {
+    const list: {
+      id: string;
+      name: string;
+      hex: string;
+      available_stock: number;
+    }[] = [];
+
+    const matching = sobremantelItems.filter(
+      (it) =>
+        (it.fabric || "Satín").toLowerCase() ===
+        selectedSobreFabric.toLowerCase(),
+    );
+
+    for (const it of matching) {
+      if (it.variants && it.variants.length > 0) {
+        for (const v of it.variants) {
+          list.push({
+            id: v.id,
+            name: v.color_name,
+            hex: v.color_hex || "#2563eb",
+            available_stock: v.total_stock,
+          });
+        }
+      } else {
+        list.push({
+          id: it.id,
+          name: it.name,
+          hex: "#2563eb",
+          available_stock: it.total_stock,
+        });
+      }
+    }
+
+    if (list.length === 0) {
+      list.push(
+        { id: "def-s1", name: "Azul Rey", hex: "#1d4ed8", available_stock: 25 },
+        { id: "def-s2", name: "Dorado", hex: "#eab308", available_stock: 15 },
+        {
+          id: "def-s3",
+          name: "Rosa Pastel",
+          hex: "#f472b6",
+          available_stock: 20,
+        },
+        { id: "def-s4", name: "Vino", hex: "#881337", available_stock: 12 },
+      );
+    }
+    return list;
+  }, [sobremantelItems, selectedSobreFabric]);
+
+  const assignedBaseTotal = useMemo(() => {
+    return Object.values(selectedBaseColors).reduce((a, b) => a + b, 0);
+  }, [selectedBaseColors]);
+
+  const assignedSobreTotal = useMemo(() => {
+    return Object.values(selectedSobreColors).reduce((a, b) => a + b, 0);
+  }, [selectedSobreColors]);
+
+  const handleAdjustBaseColor = (colorName: string, delta: number) => {
+    setSelectedBaseColors((prev) => {
+      const cur = prev[colorName] || 0;
+      const next = Math.max(0, cur + delta);
+      const copy = { ...prev };
+      if (next === 0) delete copy[colorName];
+      else copy[colorName] = next;
+      return copy;
+    });
+  };
+
+  const handleAdjustSobreColor = (colorName: string, delta: number) => {
+    setSelectedSobreColors((prev) => {
+      const cur = prev[colorName] || 0;
+      const next = Math.max(0, cur + delta);
+      const copy = { ...prev };
+      if (next === 0) delete copy[colorName];
+      else copy[colorName] = next;
+      return copy;
+    });
+  };
+
+  // Alertas de stock insuficiente en mantelería seleccionada
+  const baseShortages = useMemo(() => {
+    const alerts: {
+      color: string;
+      requested: number;
+      available: number;
+      missing: number;
+    }[] = [];
+    for (const [colName, q] of Object.entries(selectedBaseColors)) {
+      if (q <= 0) continue;
+      const colObj = baseColorsForFabric.find(
+        (c) => c.name.toLowerCase() === colName.toLowerCase(),
+      );
+      const avail = colObj ? colObj.available_stock : 0;
+      if (q > avail) {
+        alerts.push({
+          color: colName,
+          requested: q,
+          available: avail,
+          missing: q - avail,
+        });
+      }
+    }
+    return alerts;
+  }, [selectedBaseColors, baseColorsForFabric]);
+
+  const sobreShortages = useMemo(() => {
+    const alerts: {
+      color: string;
+      requested: number;
+      available: number;
+      missing: number;
+    }[] = [];
+    for (const [colName, q] of Object.entries(selectedSobreColors)) {
+      if (q <= 0) continue;
+      const colObj = sobreColorsForFabric.find(
+        (c) => c.name.toLowerCase() === colName.toLowerCase(),
+      );
+      const avail = colObj ? colObj.available_stock : 0;
+      if (q > avail) {
+        alerts.push({
+          color: colName,
+          requested: q,
+          available: avail,
+          missing: q - avail,
+        });
+      }
+    }
+    return alerts;
+  }, [selectedSobreColors, sobreColorsForFabric]);
+
+  // Resumen textual de manteles seleccionados
+  const tableclothNotes = useMemo(() => {
+    const notes: string[] = [];
+    if (totalMantelesBaseNeeded > 0) {
+      const bStr = Object.entries(selectedBaseColors)
+        .filter(([_, q]) => q > 0)
+        .map(([col, q]) => `${q}x ${col}`)
+        .join(", ");
+      notes.push(
+        `Manteles Base (${selectedBaseFabric}): ${bStr || "Sin color asignado"}`,
+      );
+    }
+    if (totalSobremantelesNeeded > 0) {
+      const sStr = Object.entries(selectedSobreColors)
+        .filter(([_, q]) => q > 0)
+        .map(([col, q]) => `${q}x ${col}`)
+        .join(", ");
+      notes.push(
+        `Sobremanteles (${selectedSobreFabric}): ${sStr || "Sin color asignado"}`,
+      );
+    }
+    return notes;
+  }, [
+    totalMantelesBaseNeeded,
+    totalSobremantelesNeeded,
+    selectedBaseFabric,
+    selectedBaseColors,
+    selectedSobreFabric,
+    selectedSobreColors,
+  ]);
+
   // Confirmar reserva en Supabase
   const handleConfirmRental = async () => {
     setIsSubmitting(true);
@@ -299,6 +614,15 @@ export function QuoteWizard({
       unit_price_applied: number;
     }[];
 
+    const combinedDeliveryNotes = [
+      deliveryNotes,
+      tableclothNotes.length > 0
+        ? `[Mantelería de Paquetes]\n${tableclothNotes.join("\n")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
     const created = await createBookingInDb(
       {
         client_id: selectedClient?.id,
@@ -306,7 +630,7 @@ export function QuoteWizard({
         client_phone: clientPhone || FER_EVENTOS_CONFIG.phone,
         address_alias: addressAlias,
         event_address: address,
-        delivery_notes: deliveryNotes,
+        delivery_notes: combinedDeliveryNotes,
         latitude: lat,
         longitude: lng,
         freight_distance_km: distanceKm,
@@ -351,10 +675,15 @@ export function QuoteWizard({
       .filter(Boolean)
       .join("\n");
 
+    const tableclothShareText =
+      tableclothNotes.length > 0
+        ? `\n🎨 *Mantelería Elegida:*\n${tableclothNotes.map((n) => `• ${n}`).join("\n")}\n`
+        : "";
+
     const message =
       `¡Hola ${clientName || "Cliente"}! 👋 Te saluda Fer Eventos.\n\n` +
       `Te comparto la cotización formal para tu evento del ${deliveryDate}:\n\n` +
-      `📦 *Mobiliario Cotizado:*\n${itemsText}\n\n` +
+      `📦 *Mobiliario Cotizado:*\n${itemsText}\n${tableclothShareText}\n` +
       `🚚 *Lugar de Entrega:* ${addressAlias} (${address})\n` +
       (deliveryNotes ? `📌 *Referencias:* ${deliveryNotes}\n` : "") +
       `💰 *Subtotal Mobiliario:* ${formatCurrency(subtotal)}\n` +
@@ -856,6 +1185,304 @@ export function QuoteWizard({
             })}
           </div>
 
+          {/* SECCIÓN INTERACTIVA DE TELAS Y COLORES PARA PAQUETES */}
+          {(totalMantelesBaseNeeded > 0 || totalSobremantelesNeeded > 0) && (
+            <div className="rounded-2xl border-2 border-blue-300 bg-blue-50/50 p-3.5 space-y-3.5 shadow-xs">
+              <div className="flex items-center justify-between border-b border-blue-200 pb-2">
+                <div>
+                  <h4 className="font-extrabold text-blue-950 text-xs flex items-center gap-1.5">
+                    <span>🎨 Mantelería de Paquetes</span>
+                  </h4>
+                  <p className="text-[11px] text-blue-800">
+                    Elige la tela y colores para los paquetes seleccionados.
+                  </p>
+                </div>
+              </div>
+
+              {/* 1. MANTELES BASE */}
+              {totalMantelesBaseNeeded > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-slate-900 text-xs block">
+                        Mantel Base
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        Total requerido: {totalMantelesBaseNeeded} mantel(es)
+                      </span>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-extrabold text-[10px] ${
+                        assignedBaseTotal === totalMantelesBaseNeeded
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                          : assignedBaseTotal < totalMantelesBaseNeeded
+                            ? "bg-amber-100 text-amber-800 border border-amber-300"
+                            : "bg-red-100 text-red-800 border border-red-300"
+                      }`}
+                    >
+                      {assignedBaseTotal} de {totalMantelesBaseNeeded} asignados
+                    </span>
+                  </div>
+
+                  {/* Selector de Tela para Mantel Base */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-600 block mb-1">
+                      1. Selecciona el Tipo de Tela:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {availableBaseFabrics.map((fab) => (
+                        <button
+                          key={fab}
+                          type="button"
+                          onClick={() => setSelectedBaseFabric(fab)}
+                          className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                            selectedBaseFabric === fab
+                              ? "bg-blue-600 text-white shadow-xs"
+                              : "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200"
+                          }`}
+                        >
+                          {fab}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Alerta de Stock Faltante si aplica */}
+                  {baseShortages.length > 0 && (
+                    <div className="space-y-1">
+                      {baseShortages.map((s) => (
+                        <div
+                          key={s.color}
+                          className="rounded-lg border border-red-300 bg-red-50 p-2 text-xs text-red-800 flex items-start gap-1.5"
+                        >
+                          <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold block">
+                              ⚠️ ¡Atención mamá! Stock insuficiente en {s.color}
+                            </span>
+                            <span className="text-[11px]">
+                              Solo quedan <strong>{s.available}</strong>{" "}
+                              disponibles y seleccionaste{" "}
+                              <strong>{s.requested}</strong> (faltan {s.missing}
+                              ). Comunícale al cliente para elegir otro color o
+                              tela.
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Selector de Colores Disponibles */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-600 block mb-1">
+                      2. Elige Colores (Tela {selectedBaseFabric}):
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                      {baseColorsForFabric.map((c) => {
+                        const curQty = selectedBaseColors[c.name] || 0;
+                        const isOverStock = curQty > c.available_stock;
+                        return (
+                          <div
+                            key={c.id || c.name}
+                            className={`flex items-center justify-between rounded-lg border p-1.5 ${
+                              isOverStock
+                                ? "border-red-400 bg-red-50/60"
+                                : curQty > 0
+                                  ? "border-blue-400 bg-blue-50/40"
+                                  : "border-slate-200 bg-slate-50/50"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className="h-4 w-4 rounded-full border border-slate-300 shrink-0 shadow-2xs"
+                                style={{ backgroundColor: c.hex }}
+                              />
+                              <div className="truncate">
+                                <span className="font-bold text-slate-900 text-xs block truncate">
+                                  {c.name}
+                                </span>
+                                <span className="text-[10px] text-slate-500">
+                                  Disp: {c.available_stock} pzas
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAdjustBaseColor(c.name, -1)
+                                }
+                                disabled={curQty <= 0}
+                                className="flex h-7 w-7 items-center justify-center rounded border border-slate-300 bg-white font-bold text-slate-700 text-xs disabled:opacity-30 active:scale-95"
+                              >
+                                -
+                              </button>
+                              <span className="w-6 text-center font-black text-slate-900 text-xs">
+                                {curQty}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleAdjustBaseColor(c.name, 1)}
+                                className="flex h-7 w-7 items-center justify-center rounded bg-blue-600 font-bold text-white text-xs hover:bg-blue-700 active:scale-95"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. SOBREMANTEL */}
+              {totalSobremantelesNeeded > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-slate-900 text-xs block">
+                        Sobremantel
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        Total requerido: {totalSobremantelesNeeded}{" "}
+                        sobremantel(es)
+                      </span>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-extrabold text-[10px] ${
+                        assignedSobreTotal === totalSobremantelesNeeded
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                          : assignedSobreTotal < totalSobremantelesNeeded
+                            ? "bg-amber-100 text-amber-800 border border-amber-300"
+                            : "bg-red-100 text-red-800 border border-red-300"
+                      }`}
+                    >
+                      {assignedSobreTotal} de {totalSobremantelesNeeded}{" "}
+                      asignados
+                    </span>
+                  </div>
+
+                  {/* Selector de Tela para Sobremantel */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-600 block mb-1">
+                      1. Selecciona el Tipo de Tela:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {availableSobreFabrics.map((fab) => (
+                        <button
+                          key={fab}
+                          type="button"
+                          onClick={() => setSelectedSobreFabric(fab)}
+                          className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                            selectedSobreFabric === fab
+                              ? "bg-blue-600 text-white shadow-xs"
+                              : "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200"
+                          }`}
+                        >
+                          {fab}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Alerta de Stock Faltante en Sobremanteles */}
+                  {sobreShortages.length > 0 && (
+                    <div className="space-y-1">
+                      {sobreShortages.map((s) => (
+                        <div
+                          key={s.color}
+                          className="rounded-lg border border-red-300 bg-red-50 p-2 text-xs text-red-800 flex items-start gap-1.5"
+                        >
+                          <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold block">
+                              ⚠️ ¡Atención mamá! Stock insuficiente en {s.color}
+                            </span>
+                            <span className="text-[11px]">
+                              Solo quedan <strong>{s.available}</strong>{" "}
+                              disponibles y seleccionaste{" "}
+                              <strong>{s.requested}</strong> (faltan {s.missing}
+                              ). Comunícale al cliente para elegir otro color o
+                              tela.
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Selector de Colores Disponibles en Sobremanteles */}
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-600 block mb-1">
+                      2. Elige Colores (Tela {selectedSobreFabric}):
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                      {sobreColorsForFabric.map((c) => {
+                        const curQty = selectedSobreColors[c.name] || 0;
+                        const isOverStock = curQty > c.available_stock;
+                        return (
+                          <div
+                            key={c.id || c.name}
+                            className={`flex items-center justify-between rounded-lg border p-1.5 ${
+                              isOverStock
+                                ? "border-red-400 bg-red-50/60"
+                                : curQty > 0
+                                  ? "border-blue-400 bg-blue-50/40"
+                                  : "border-slate-200 bg-slate-50/50"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className="h-4 w-4 rounded-full border border-slate-300 shrink-0 shadow-2xs"
+                                style={{ backgroundColor: c.hex }}
+                              />
+                              <div className="truncate">
+                                <span className="font-bold text-slate-900 text-xs block truncate">
+                                  {c.name}
+                                </span>
+                                <span className="text-[10px] text-slate-500">
+                                  Disp: {c.available_stock} pzas
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAdjustSobreColor(c.name, -1)
+                                }
+                                disabled={curQty <= 0}
+                                className="flex h-7 w-7 items-center justify-center rounded border border-slate-300 bg-white font-bold text-slate-700 text-xs disabled:opacity-30 active:scale-95"
+                              >
+                                -
+                              </button>
+                              <span className="w-6 text-center font-black text-slate-900 text-xs">
+                                {curQty}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAdjustSobreColor(c.name, 1)
+                                }
+                                className="flex h-7 w-7 items-center justify-center rounded bg-blue-600 font-bold text-white text-xs hover:bg-blue-700 active:scale-95"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-2 pt-2">
             <button
               type="button"
@@ -995,6 +1622,23 @@ export function QuoteWizard({
               </span>
             </div>
           </div>
+
+          {/* Resumen de Mantelería Elegida */}
+          {tableclothNotes.length > 0 && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-2.5 text-xs space-y-1">
+              <span className="font-bold text-blue-900 flex items-center gap-1">
+                <span>🎨 Mantelería de Paquetes Asignada:</span>
+              </span>
+              {tableclothNotes.map((note) => (
+                <p
+                  key={note}
+                  className="text-slate-800 text-[11px] font-medium"
+                >
+                  • {note}
+                </p>
+              ))}
+            </div>
+          )}
 
           {/* Desglose de Totales */}
           <div className="space-y-2 text-xs">

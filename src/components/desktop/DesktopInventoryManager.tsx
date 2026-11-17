@@ -345,13 +345,56 @@ export function DesktopInventoryManager({
                       {/* Detalles / Variaciones */}
                       <td className="px-3 py-2.5">
                         {isPkg ? (
-                          <span className="text-[11px] text-purple-700 font-semibold">
-                            {item.package_components?.length || 0} artículos
-                            incluidos
-                            {item.capacity_people
-                              ? ` • ${item.capacity_people} pers.`
-                              : ""}
-                          </span>
+                          <div className="space-y-1 max-w-xs">
+                            <div className="flex flex-wrap gap-1">
+                              {item.package_components &&
+                              item.package_components.length > 0 ? (
+                                item.package_components.map((comp) => {
+                                  const compItem =
+                                    items.find(
+                                      (i) => i.id === comp.component_item_id,
+                                    ) || comp.component_item;
+                                  const isCustomMantel =
+                                    comp.is_customizable ||
+                                    comp.customization_type === "mantel_base" ||
+                                    comp.customization_type === "sobremantel";
+                                  const label =
+                                    comp.customization_type === "mantel_base"
+                                      ? "Mantel Base"
+                                      : comp.customization_type ===
+                                          "sobremantel"
+                                        ? "Sobremantel"
+                                        : compItem?.name || "Pieza";
+
+                                  return (
+                                    <span
+                                      key={comp.id || comp.component_item_id}
+                                      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                                        isCustomMantel
+                                          ? "bg-purple-100 text-purple-900 border border-purple-200"
+                                          : "bg-blue-50 text-blue-900 border border-blue-200"
+                                      }`}
+                                    >
+                                      {comp.quantity}x {label}
+                                    </span>
+                                  );
+                                })
+                              ) : item.description ? (
+                                <span className="text-[11px] text-slate-700 font-semibold">
+                                  {item.description}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">
+                                  Sin componentes definidos
+                                </span>
+                              )}
+                            </div>
+                            {item.capacity_people ? (
+                              <span className="inline-block text-[10px] font-extrabold text-blue-700">
+                                👥 {item.capacity_people} personas
+                              </span>
+                            ) : null}
+                          </div>
                         ) : (
                           <div className="space-y-0.5">
                             {item.fabric && (
