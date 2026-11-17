@@ -80,18 +80,49 @@ function isUuid(id: string): boolean {
   return UUID_REGEX.test(id);
 }
 
+export function normalizeCategoryFromDb(item: {
+  name?: string;
+  sku?: string;
+  category: string;
+}): string {
+  const lowerName = (item.name || "").toLowerCase();
+  const lowerSku = (item.sku || "").toLowerCase();
+
+  // Si la categoría viene como manteleria u otros pero es un mantel o sobremantel:
+  if (
+    item.category === "manteleria" ||
+    item.category === "otros" ||
+    !item.category
+  ) {
+    if (lowerName.includes("sobremantel") || lowerSku.includes("sobr")) {
+      return "sobremanteles";
+    }
+    if (
+      lowerName.includes("mantel") ||
+      lowerSku.includes("mant") ||
+      item.category === "manteleria"
+    ) {
+      return "manteles_base";
+    }
+  }
+  return item.category;
+}
+
 function mapToDbCategory(cat: string): string {
   const allowed = [
     "sillas",
     "mesas",
     "manteleria",
+    "manteles_base",
+    "sobremanteles",
     "vajilla",
     "toldos_carpas",
     "decoracion",
     "otros",
   ];
   if (allowed.includes(cat)) return cat;
-  if (cat === "manteles_base" || cat === "sobremanteles") return "manteleria";
+  if (cat.includes("mantel") || cat.includes("sobremantel"))
+    return "manteleria";
   return "otros";
 }
 
@@ -256,7 +287,17 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
       if (!error && data) {
         lastSupabaseError = null;
         if (data.length > 0) {
-          return data as InventoryItem[];
+          const overrides = getLocalItemOverrides();
+          const mapped = (data as InventoryItem[]).map((item) => {
+            const ov = overrides[item.id];
+            const resolvedCat = ov?.category || normalizeCategoryFromDb(item);
+            return {
+              ...item,
+              ...ov,
+              category: resolvedCat,
+            };
+          });
+          return mapped;
         }
         const seeded = await seedInitialInventoryToSupabase();
         if (seeded && seeded.length > 0) {
@@ -272,7 +313,17 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
           .order("name", { ascending: true });
         if (!simpleErr && simpleData && simpleData.length > 0) {
           lastSupabaseError = null;
-          return simpleData as InventoryItem[];
+          const overrides = getLocalItemOverrides();
+          const mapped = (simpleData as InventoryItem[]).map((item) => {
+            const ov = overrides[item.id];
+            const resolvedCat = ov?.category || normalizeCategoryFromDb(item);
+            return {
+              ...item,
+              ...ov,
+              category: resolvedCat,
+            };
+          });
+          return mapped;
         }
       }
     } catch (e) {
@@ -360,6 +411,9 @@ export async function updateItemDetailsInDb(
       updated_at: new Date().toISOString(),
     };
     if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.category !== undefined) {
+      payload.category = mapToDbCategory(updates.category);
+    }
     if (updates.rental_price !== undefined)
       payload.rental_price = updates.rental_price;
     if (updates.replacement_price !== undefined)
@@ -374,16 +428,73 @@ export async function updateItemDetailsInDb(
       payload.description = updates.description;
 
     if (isUuid(id)) {
-      const { error } = await supabase
+      let { error } = await supabase
         .from("inventory_items")
         .update(payload)
         .eq("id", id);
+
+      // Si falla por check constraint en category (ej. manteles_base en BD vieja), fallback a manteleria
+      if (
+        error &&
+        (updates.category === "manteles_base" ||
+          updates.category === "sobremanteles")
+      ) {
+        payload.category = "manteleria";
+        const retry = await supabase
+          .from("inventory_items")
+          .update(payload)
+          .eq("id", id);
+        error = retry.error;
+      }
 
       if (error) {
         lastSupabaseError = error.message;
         console.error("Error actualizando en Supabase:", error);
         return false;
       }
+
+      // Sincronizar variantes si fueron modificadas
+      if (updates.variants !== undefined) {
+        try {
+          await supabase
+            .from("inventory_item_variants")
+            .delete()
+            .eq("item_id", id);
+          if (updates.variants.length > 0) {
+            await supabase.from("inventory_item_variants").insert(
+              updates.variants.map((v) => ({
+                item_id: id,
+                color_name: v.color_name,
+                color_hex: v.color_hex || "#2563eb",
+                total_stock: v.total_stock,
+              })),
+            );
+          }
+        } catch (vErr) {
+          console.warn("Error sincronizando variantes:", vErr);
+        }
+      }
+
+      // Sincronizar componentes de paquete si fueron modificados
+      if (updates.package_components !== undefined) {
+        try {
+          await supabase.from("package_items").delete().eq("package_id", id);
+          if (updates.package_components.length > 0) {
+            await supabase.from("package_items").insert(
+              updates.package_components.map((c) => ({
+                package_id: id,
+                component_item_id: c.component_item_id,
+                quantity: c.quantity,
+                is_customizable: c.is_customizable,
+                customization_type: c.customization_type || null,
+              })),
+            );
+          }
+        } catch (cErr) {
+          console.warn("Error sincronizando receta de paquete:", cErr);
+        }
+      }
+
       lastSupabaseError = null;
       return true;
     }
@@ -396,32 +507,58 @@ export async function updateItemDetailsInDb(
     }
 
     const merged = { ...fallback, ...updates };
-    const { error: upsertErr } = await supabase.from("inventory_items").upsert(
-      [
-        {
-          sku: merged.sku,
-          name: merged.name,
-          category: mapToDbCategory(merged.category),
-          item_type: merged.item_type || "individual",
-          fabric: merged.fabric || null,
-          capacity_people: merged.capacity_people || 0,
-          description: merged.description || null,
-          total_stock: merged.total_stock,
-          rental_price: merged.rental_price,
-          replacement_price: merged.replacement_price,
-          image_url: merged.image_url || null,
-          buffer_cleanup_hours: merged.buffer_cleanup_hours || 2,
-          is_active: true,
-        },
-      ],
-      { onConflict: "sku" },
-    );
+    const { data: upserted, error: upsertErr } = await supabase
+      .from("inventory_items")
+      .upsert(
+        [
+          {
+            sku: merged.sku,
+            name: merged.name,
+            category: mapToDbCategory(merged.category),
+            item_type: merged.item_type || "individual",
+            fabric: merged.fabric || null,
+            capacity_people: merged.capacity_people || 0,
+            description: merged.description || null,
+            total_stock: merged.total_stock,
+            rental_price: merged.rental_price,
+            replacement_price: merged.replacement_price,
+            image_url: merged.image_url || null,
+            buffer_cleanup_hours: merged.buffer_cleanup_hours || 2,
+            is_active: true,
+          },
+        ],
+        { onConflict: "sku" },
+      )
+      .select();
 
     if (upsertErr) {
       lastSupabaseError = upsertErr.message;
       console.error("Error en upsert por SKU en Supabase:", upsertErr);
       return false;
     }
+
+    if (upserted && upserted.length > 0 && updates.variants) {
+      const realId = upserted[0].id;
+      try {
+        await supabase
+          .from("inventory_item_variants")
+          .delete()
+          .eq("item_id", realId);
+        if (updates.variants.length > 0) {
+          await supabase.from("inventory_item_variants").insert(
+            updates.variants.map((v) => ({
+              item_id: realId,
+              color_name: v.color_name,
+              color_hex: v.color_hex || "#2563eb",
+              total_stock: v.total_stock,
+            })),
+          );
+        }
+      } catch (vErr) {
+        console.warn("Error en variantes upserted:", vErr);
+      }
+    }
+
     lastSupabaseError = null;
     return true;
   } catch (e) {
@@ -486,19 +623,9 @@ export async function createLooseItemInDb(input: {
 
   if (isSupabaseConfigured && supabase) {
     try {
-      const dbCategory = [
-        "sillas",
-        "mesas",
-        "manteleria",
-        "vajilla",
-        "toldos_carpas",
-        "decoracion",
-        "otros",
-      ].includes(input.category)
-        ? input.category
-        : "otros";
+      let dbCategory = mapToDbCategory(input.category);
 
-      const { data: created, error } = await supabase
+      let { data: created, error } = await supabase
         .from("inventory_items")
         .insert([
           {
@@ -517,6 +644,33 @@ export async function createLooseItemInDb(input: {
         .select()
         .single();
 
+      if (
+        error &&
+        (dbCategory === "manteles_base" || dbCategory === "sobremanteles")
+      ) {
+        dbCategory = "manteleria";
+        const retry = await supabase
+          .from("inventory_items")
+          .insert([
+            {
+              sku,
+              name: newItem.name,
+              category: dbCategory,
+              item_type: "individual",
+              fabric: newItem.fabric,
+              rental_price: newItem.rental_price,
+              replacement_price: newItem.replacement_price,
+              total_stock: newItem.total_stock,
+              image_url: newItem.image_url,
+              is_active: true,
+            },
+          ])
+          .select()
+          .single();
+        created = retry.data;
+        error = retry.error;
+      }
+
       if (!error && created) {
         newItem.id = created.id;
         if (mappedVariants && mappedVariants.length > 0) {
@@ -529,6 +683,10 @@ export async function createLooseItemInDb(input: {
             })),
           );
         }
+        saveLocalItemOverride(created.id, {
+          category: input.category,
+          variants: mappedVariants,
+        });
         saveLocalLooseItem(newItem);
       }
     } catch (e) {

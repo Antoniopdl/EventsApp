@@ -98,6 +98,8 @@ export function CreateLooseItemModal({
         total_stock: Math.max(0, newColorStock),
       },
     ]);
+    setNewColorName("");
+    setNewColorStock(10);
   };
 
   const handleRemoveVariant = (colorName: string) => {
@@ -111,17 +113,39 @@ export function CreateLooseItemModal({
       return;
     }
 
+    const finalVariants = [...variants];
+    if (showFabricAndColors && newColorName.trim()) {
+      const trimmed = newColorName.trim();
+      const alreadyExists = finalVariants.some(
+        (v) => v.color_name.toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (!alreadyExists) {
+        finalVariants.push({
+          color_name: trimmed,
+          color_hex: newColorHex,
+          total_stock: Math.max(0, newColorStock),
+        });
+      }
+    }
+
+    const calculatedStock =
+      showFabricAndColors && finalVariants.length > 0
+        ? finalVariants.reduce((acc, v) => acc + v.total_stock, 0)
+        : totalStock;
+
     setIsSubmitting(true);
     const created = await createLooseItemInDb({
       name: name.trim(),
       category,
       rental_price: rentalPrice,
       replacement_price: replacementPrice,
-      total_stock: totalStock,
+      total_stock: calculatedStock,
       fabric: showFabricAndColors ? selectedFabric : null,
       image_url: imageUrl,
       variants:
-        showFabricAndColors && variants.length > 0 ? variants : undefined,
+        showFabricAndColors && finalVariants.length > 0
+          ? finalVariants
+          : undefined,
     });
     setIsSubmitting(false);
 
@@ -303,7 +327,14 @@ export function CreateLooseItemModal({
                       type="text"
                       value={newColorName}
                       onChange={(e) => setNewColorName(e.target.value)}
-                      placeholder="Nombre color"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleAddVariant();
+                        }
+                      }}
+                      placeholder="Nombre color (ej. Palo de Rosa)"
                       className="flex-1 rounded-xl border border-purple-300 bg-white px-2.5 py-1.5 text-xs font-semibold outline-none"
                     />
                     <input
@@ -311,6 +342,13 @@ export function CreateLooseItemModal({
                       min={0}
                       value={newColorStock}
                       onChange={(e) => setNewColorStock(Number(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleAddVariant();
+                        }
+                      }}
                       className="w-16 rounded-xl border border-purple-300 bg-white px-2 py-1.5 text-xs font-bold text-center outline-none"
                       title="Cantidad de este color"
                     />

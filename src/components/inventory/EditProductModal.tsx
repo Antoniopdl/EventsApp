@@ -88,15 +88,23 @@ export function EditProductModal({
 
   const handleAddVariant = () => {
     if (!newColorName.trim()) return;
+    const trimmed = newColorName.trim();
+    if (
+      variants.some((v) => v.color_name.toLowerCase() === trimmed.toLowerCase())
+    ) {
+      onNotification("Ese color ya está agregado.");
+      return;
+    }
     const newVar: InventoryVariant = {
       id: `var-${Date.now()}`,
       item_id: item.id,
-      color_name: newColorName.trim(),
+      color_name: trimmed,
       color_hex: newColorHex,
       total_stock: Math.max(0, newColorStock),
     };
     setVariants((prev) => [...prev, newVar]);
     setNewColorName("");
+    setNewColorStock(10);
   };
 
   const handleUpdateVariantStock = (varId: string, stock: number) => {
@@ -129,9 +137,26 @@ export function EditProductModal({
     if (!name.trim()) return;
 
     setIsSaving(true);
+    const finalVariants = [...variants];
+    if (showFabricSection && newColorName.trim()) {
+      const trimmed = newColorName.trim();
+      const alreadyExists = finalVariants.some(
+        (v) => v.color_name.toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (!alreadyExists) {
+        finalVariants.push({
+          id: `var-${Date.now()}`,
+          item_id: item.id,
+          color_name: trimmed,
+          color_hex: newColorHex,
+          total_stock: Math.max(0, newColorStock),
+        });
+      }
+    }
+
     const computedStock =
-      showFabricSection && variants.length > 0
-        ? variants.reduce((s, v) => s + v.total_stock, 0)
+      showFabricSection && finalVariants.length > 0
+        ? finalVariants.reduce((s, v) => s + v.total_stock, 0)
         : totalStock;
 
     const updatedComponents: PackageComponent[] | undefined = isPackage
@@ -154,7 +179,7 @@ export function EditProductModal({
       description: description.trim() || null,
       image_url: imageUrl || null,
       fabric: showFabricSection ? fabric : null,
-      variants: showFabricSection ? variants : item.variants,
+      variants: showFabricSection ? finalVariants : item.variants,
       package_components: updatedComponents,
     });
 
@@ -364,6 +389,13 @@ export function EditProductModal({
                       type="text"
                       value={newColorName}
                       onChange={(e) => setNewColorName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleAddVariant();
+                        }
+                      }}
                       placeholder="Nuevo color (ej. Vino)"
                       className="flex-1 rounded-xl border border-purple-300 bg-white px-2.5 py-1.5 text-xs font-semibold outline-none"
                     />
@@ -372,14 +404,21 @@ export function EditProductModal({
                       min={0}
                       value={newColorStock}
                       onChange={(e) => setNewColorStock(Number(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleAddVariant();
+                        }
+                      }}
                       className="w-14 rounded-xl border border-purple-300 bg-white px-2 py-1.5 text-xs font-bold text-center outline-none"
                     />
                     <button
                       type="button"
                       onClick={handleAddVariant}
-                      className="rounded-xl bg-purple-700 px-2.5 py-1.5 text-xs font-bold text-white"
+                      className="rounded-xl bg-purple-700 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-purple-800"
                     >
-                      +
+                      + Color
                     </button>
                   </div>
                 </div>
