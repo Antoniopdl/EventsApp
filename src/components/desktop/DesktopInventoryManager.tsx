@@ -4,6 +4,7 @@ import {
   Boxes,
   Camera,
   Edit2,
+  FolderOpen,
   Package,
   Palette,
   Plus,
@@ -18,6 +19,7 @@ import {
   getTableCompatibilityLabel,
 } from "@/core/domain/inventory";
 import { formatCurrency } from "@/lib/utils";
+import { FabricMasterCatalogManager } from "../inventory/FabricMasterCatalogManager";
 import { TableclothCatalogModal } from "../inventory/TableclothCatalogModal";
 
 interface DesktopInventoryManagerProps {
@@ -128,6 +130,8 @@ export function DesktopInventoryManager({
   >("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showTableclothCatalog, setShowTableclothCatalog] = useState(false);
+  const [showMasterCatalogManager, setShowMasterCatalogManager] =
+    useState(false);
 
   // Edición rápida en celda
   const [editingCell, setEditingCell] = useState<{
@@ -235,11 +239,20 @@ export function DesktopInventoryManager({
           <button
             type="button"
             onClick={() => setShowTableclothCatalog(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-purple-300 bg-purple-50 px-3.5 py-2 text-xs font-bold text-purple-900 shadow-xs hover:bg-purple-100 active:scale-95 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 rounded-xl border border-purple-300 bg-purple-50 px-3 py-2 text-xs font-bold text-purple-900 shadow-xs hover:bg-purple-100 active:scale-95 transition-all cursor-pointer"
             title="Muestrario de manteles para compartir fotos con clientes"
           >
             <Palette className="h-4 w-4 text-purple-700" />
-            <span>🎨 Muestrario de Manteles</span>
+            <span>🎨 Catálogo Manteles</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowMasterCatalogManager(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900 shadow-xs hover:bg-indigo-100 active:scale-95 transition-all cursor-pointer"
+            title="Editar catálogo maestro de telas, colores y fotos"
+          >
+            <FolderOpen className="h-4 w-4 text-indigo-700" />
+            <span>🧵 Muestrario Maestro</span>
           </button>
           <button
             type="button"
@@ -707,6 +720,12 @@ export function DesktopInventoryManager({
         <TableclothCatalogModal
           items={items}
           onClose={() => setShowTableclothCatalog(false)}
+          onNotification={onNotification}
+        />
+      )}
+      {showMasterCatalogManager && (
+        <FabricMasterCatalogManager
+          onClose={() => setShowMasterCatalogManager(false)}
           onNotification={onNotification}
         />
       )}

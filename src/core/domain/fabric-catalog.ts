@@ -191,11 +191,66 @@ export const FABRIC_CATALOG: FabricDefinition[] = [
   },
 ];
 
+// Clave de almacenamiento local para el muestrario maestro editable
+export const MASTER_FABRIC_CATALOG_STORAGE_KEY =
+  "fer_eventos_master_fabric_catalog_v2";
+
+/**
+ * Obtiene el catálogo maestro de telas actual (desde localStorage si existe, o predeterminado).
+ */
+export function getMasterFabricCatalog(): FabricDefinition[] {
+  if (typeof window === "undefined") return FABRIC_CATALOG;
+  const raw = localStorage.getItem(MASTER_FABRIC_CATALOG_STORAGE_KEY);
+  if (!raw) return FABRIC_CATALOG;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed as FabricDefinition[];
+    }
+    return FABRIC_CATALOG;
+  } catch {
+    return FABRIC_CATALOG;
+  }
+}
+
+/**
+ * Guarda el catálogo maestro de telas en el almacenamiento local y notifica a los componentes.
+ */
+export function saveMasterFabricCatalog(catalog: FabricDefinition[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(
+    MASTER_FABRIC_CATALOG_STORAGE_KEY,
+    JSON.stringify(catalog),
+  );
+  window.dispatchEvent(
+    new CustomEvent("fer_eventos_fabric_catalog_updated", { detail: catalog }),
+  );
+}
+
+/**
+ * Restaura el catálogo maestro a los valores de fábrica con las 48 fotos iniciales.
+ */
+export function resetMasterFabricCatalog(): FabricDefinition[] {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(MASTER_FABRIC_CATALOG_STORAGE_KEY);
+    window.dispatchEvent(
+      new CustomEvent("fer_eventos_fabric_catalog_updated", {
+        detail: FABRIC_CATALOG,
+      }),
+    );
+  }
+  return FABRIC_CATALOG;
+}
+
 // Helper para encontrar colores registrados por nombre de tela
-export function getRegisteredColorsForFabric(fabricName: string): FabricColorSwatch[] {
+export function getRegisteredColorsForFabric(
+  fabricName: string,
+  catalog?: FabricDefinition[],
+): FabricColorSwatch[] {
   if (!fabricName) return [];
+  const activeCatalog = catalog || getMasterFabricCatalog();
   const clean = fabricName.toLowerCase().trim();
-  const found = FABRIC_CATALOG.find(
+  const found = activeCatalog.find(
     (f) =>
       f.name.toLowerCase() === clean ||
       f.slug.toLowerCase() === clean ||
@@ -209,10 +264,13 @@ export function getRegisteredColorsForFabric(fabricName: string): FabricColorSwa
 export function getPresetPhotosForFabricAndColor(
   fabricName: string,
   colorName: string,
+  catalog?: FabricDefinition[],
 ): { texture: string; drape?: string; all: string[] } | null {
-  const colors = getRegisteredColorsForFabric(fabricName);
+  const colors = getRegisteredColorsForFabric(fabricName, catalog);
   const cleanColor = colorName.toLowerCase().trim();
-  const swatch = colors.find((c) => c.color_name.toLowerCase().trim() === cleanColor);
+  const swatch = colors.find(
+    (c) => c.color_name.toLowerCase().trim() === cleanColor,
+  );
   if (!swatch) return null;
 
   const all = [swatch.texture_url];
@@ -230,8 +288,9 @@ export function getPresetPhotosForFabricAndColor(
 export function findColorByFabricAndName(
   fabricName: string,
   colorName: string,
+  catalog?: FabricDefinition[],
 ): FabricColorSwatch | null {
-  const colors = getRegisteredColorsForFabric(fabricName);
+  const colors = getRegisteredColorsForFabric(fabricName, catalog);
   const cleanColor = colorName.toLowerCase().trim();
   const swatch = colors.find(
     (c) =>

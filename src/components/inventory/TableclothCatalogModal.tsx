@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  FolderOpen,
   MessageCircle,
   Palette,
   Search,
@@ -25,6 +26,7 @@ import {
   isTableclothCategory,
 } from "@/core/domain/inventory";
 import { formatCurrency } from "@/lib/utils";
+import { FabricMasterCatalogManager } from "./FabricMasterCatalogManager";
 
 interface TableclothCatalogModalProps {
   items: InventoryItem[];
@@ -65,6 +67,7 @@ export function TableclothCatalogModal({
     Record<string, number>
   >({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [showMasterManager, setShowMasterManager] = useState(false);
 
   // Extraer todas las variaciones de mantelería disponibles
   const catalogEntries: CatalogVariantEntry[] = useMemo(() => {
@@ -325,6 +328,17 @@ export function TableclothCatalogModal({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowMasterManager(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900 shadow-2xs hover:bg-indigo-100 transition-all active:scale-95 cursor-pointer"
+              title="Editar telas, colores o subir nuevas fotos en el muestrario maestro"
+            >
+              <FolderOpen className="h-3.5 w-3.5 text-indigo-700" />
+              <span className="hidden md:inline">Editar Muestrario Maestro</span>
+              <span className="md:hidden">Muestrario</span>
+            </button>
+
             <button
               type="button"
               onClick={handleShareAllWhatsApp}
@@ -717,6 +731,13 @@ export function TableclothCatalogModal({
             Toca en cualquier parte para cerrar
           </p>
         </div>
+      )}
+
+      {showMasterManager && (
+        <FabricMasterCatalogManager
+          onClose={() => setShowMasterManager(false)}
+          onNotification={onNotification}
+        />
       )}
     </div>
   );

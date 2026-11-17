@@ -11,8 +11,9 @@ import {
   Truck,
   Users,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import type { AppUser, UserRole } from "@/core/domain/user";
+import { FabricMasterCatalogManager } from "../inventory/FabricMasterCatalogManager";
 
 interface DesktopLayoutProps {
   currentUser: AppUser | null;
@@ -39,6 +40,7 @@ export function DesktopLayout({
   _onNotification,
   children,
 }: DesktopLayoutProps & { _onNotification?: (msg: string) => void }) {
+  const [showMasterCatalogModal, setShowMasterCatalogModal] = useState(false);
   const navigationItems = [
     {
       id: "inventory",
@@ -165,6 +167,22 @@ export function DesktopLayout({
               Link ↗
             </span>
           </a>
+
+          {/* Acceso Directo al Editor de Muestrario Maestro */}
+          <button
+            type="button"
+            onClick={() => setShowMasterCatalogModal(true)}
+            className="flex w-full items-center justify-between rounded-2xl border border-indigo-200 bg-indigo-50/70 px-3.5 py-2.5 text-xs font-bold text-indigo-900 hover:bg-indigo-100 transition-all active:scale-98 cursor-pointer text-left"
+            title="Editar telas, colores y fotos en el muestrario maestro"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-sm">🧵</span>
+              <span>Muestrario Maestro</span>
+            </div>
+            <span className="text-[10px] font-extrabold text-indigo-700 bg-indigo-200/60 px-1.5 py-0.5 rounded-md">
+              Editor
+            </span>
+          </button>
         </div>
 
         {/* Zona Inferior: Botón de Alternar a Vista Móvil y Perfil */}
@@ -260,6 +278,12 @@ export function DesktopLayout({
           <div className="mx-auto max-w-7xl">{children}</div>
         </main>
       </div>
+
+      {showMasterCatalogModal && (
+        <FabricMasterCatalogManager
+          onClose={() => setShowMasterCatalogModal(false)}
+        />
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   CheckSquare,
   ChevronDown,
   ChevronUp,
+  FolderOpen,
   Image as ImageIcon,
   Palette,
   Plus,
@@ -14,13 +15,14 @@ import {
   X,
   ZoomIn,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   FABRIC_CATALOG,
   getPresetPhotosForFabricAndColor,
   getRegisteredColorsForFabric,
 } from "@/core/domain/fabric-catalog";
 import type { InventoryVariant } from "@/core/domain/inventory";
+import { FabricMasterCatalogManager } from "./FabricMasterCatalogManager";
 
 interface FabricColorSelectorProps {
   fabric: string;
@@ -36,15 +38,24 @@ export function FabricColorSelector({
   onOpenPhotosModal,
 }: FabricColorSelectorProps) {
   const [showAllColors, setShowAllColors] = useState(true);
+  const [showMasterManager, setShowMasterManager] = useState(false);
+  const [catalogVersion, setCatalogVersion] = useState(0);
   const [previewZoom, setPreviewZoom] = useState<{
     url: string;
     label: string;
   } | null>(null);
 
+  useEffect(() => {
+    const handler = () => setCatalogVersion((v) => v + 1);
+    window.addEventListener("fer_eventos_fabric_catalog_updated", handler);
+    return () =>
+      window.removeEventListener("fer_eventos_fabric_catalog_updated", handler);
+  }, []);
+
   // Colores predefinidos de esta tela en el muestrario
   const presetColors = useMemo(() => {
     return getRegisteredColorsForFabric(fabric);
-  }, [fabric]);
+  }, [fabric, catalogVersion]);
 
   // Mapa de variantes activas por nombre de color (case-insensitive)
   const activeMap = useMemo(() => {
@@ -160,6 +171,15 @@ export function FabricColorSelector({
 
         {presetColors.length > 0 && (
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowMasterManager(true)}
+              className="flex items-center gap-1 rounded-lg border border-purple-300 bg-white px-2 py-1 text-[10px] font-bold text-purple-800 hover:bg-purple-100 transition-colors shadow-2xs"
+              title="Abrir editor del muestrario maestro de telas"
+            >
+              <FolderOpen className="h-3 w-3 text-purple-600" />
+              <span>Editar Muestrario</span>
+            </button>
             <button
               type="button"
               onClick={handleSelectAllPresets}
@@ -345,6 +365,12 @@ export function FabricColorSelector({
             </p>
           </div>
         </div>
+      )}
+
+      {showMasterManager && (
+        <FabricMasterCatalogManager
+          onClose={() => setShowMasterManager(false)}
+        />
       )}
     </div>
   );
